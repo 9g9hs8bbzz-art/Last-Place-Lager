@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="96" fill="#0b1120"/>
+  <path d="M256 84l150 60v112c0 92-62 150-150 172-88-22-150-80-150-172V144z" fill="none" stroke="#f5b301" stroke-width="26" stroke-linejoin="round"/>
+  <text x="256" y="312" font-family="Georgia, serif" font-size="168" font-weight="700" fill="#f5b301" text-anchor="middle">FC</text>
+</svg>
