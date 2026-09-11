@@ -23,7 +23,7 @@ import { gradeOfficialLeg, sweatBoard } from '../services/live.js';
 import { applyImport, recordCorrection } from '../services/historicalImport.js';
 import { leaderboard } from '../services/stats.js';
 import { RateLimitSignal, type BoardReaderProvider, type RawMarket, type RequestContext } from '../providers/types.js';
-import { averageAmericanOdds, americanToDecimal, decimalToAmerican, checkGuideline, INITIAL_ROSTER, NAMED_CORRECTIONS } from '@fcp/shared';
+import { averageAmericanOdds, americanToDecimal, decimalToAmerican, checkGuideline, isConfirmedPlayed, INITIAL_ROSTER, NAMED_CORRECTIONS } from '@fcp/shared';
 
 const WORKBOOK = path.resolve(process.cwd(), '../../data/Last_Place_Lagers_First_Class_Parlays.xlsx');
 
@@ -413,13 +413,16 @@ describe('§97 · HISTORICAL IMPORT, WEEK OFF, and HISTORICAL CORRECTION', () =>
     }
   });
 
-  it('WEEK OFF — the declared 2024 W6 disagreement is raised for audit, not silently resolved', async () => {
-    // The accepted Week Off list names 2024 Week 6, but the workbook holds ten
-    // real picks for it. The picks are kept (they are part of the 110/260
-    // totals) and the disagreement is surfaced once for an administrator.
-    const conflict = await prisma.importConflict.findFirst({ where: { scope: 'WEEK_OFF_HAS_DATA', seasonYear: 2024, weekNumber: 6 } });
-    expect(conflict).not.toBeNull();
+  it('WEEK OFF — 2024 W6 is a played week, and stays one on every re-import', async () => {
+    // Settled by the group: 2024 Week 6 WAS played. It holds ten real picks and
+    // is part of the 110/260 totals, so it is an ordinary settled week and the
+    // old disagreement is never raised again.
+    expect(isConfirmedPlayed(2024, 6)).toBe(true);
     expect(await prisma.historicalPick.count({ where: { seasonYear: 2024, weekNumber: 6 } })).toBe(10);
+
+    const week = await prisma.nFLWeek.findFirstOrThrow({ where: { weekNumber: 6, season: { year: 2024 } } });
+    expect(week.status).not.toBe('WEEK_OFF');
+    expect(await prisma.importConflict.findFirst({ where: { scope: 'WEEK_OFF_HAS_DATA', seasonYear: 2024, weekNumber: 6 } })).toBeNull();
   });
 
   it('HISTORICAL CORRECTION — re-importing the old spreadsheet keeps approved corrections', async () => {

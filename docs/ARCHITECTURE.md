@@ -184,16 +184,21 @@ mangling is exactly reversible — Excel read `D-M` as day-month — so the orig
 text is recovered as `${day}-${month}`. All 19 were verified to stay consistent
 with their recorded W/L.
 
-### One known disagreement
+### Week Offs
 
-The accepted Week Off list names **2024 Week 6**, but the workbook contains ten
-real picks for that week, and the accepted totals (110 for 2024, 260 overall)
-require those picks to be counted.
+**2024 W12** and **2025 W15** are genuinely empty in the source and are recorded
+as Week Offs — an intentional status, never an 0-0 record.
 
-Rather than discard either fact, the importer keeps the picks, marks the week as
-played, and raises one `ImportConflict` explaining the disagreement. It is
-visible in **Admin → History**. 2024 W12 and 2025 W15 are genuinely empty in the
-source and are recorded as Week Offs.
+**2024 Week 6 was played.** The original specification listed it as a Week Off,
+but the workbook holds ten real picks for it and the accepted totals (110 for
+2024, 260 overall) require them. The group reviewed the disagreement and
+confirmed the week was played, so it is now recorded in
+`RESOLVED_WEEK_OFF_DECISIONS` and treated as an ordinary settled week.
+
+That record is what makes the decision permanent: `isConfirmedPlayed(2024, 6)`
+returns true, and `applyImport` refuses to mark a confirmed-played week as a
+Week Off no matter what a future source file looks like. The question cannot be
+reopened by a re-import or by someone re-reading §81.
 
 ---
 

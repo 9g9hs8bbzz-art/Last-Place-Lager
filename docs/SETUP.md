@@ -190,7 +190,7 @@ Seasons found ............ 2024, 2025
 Unique picks found ....... 260
 Duplicates excluded ...... 150
 Users matched ............ 10
-Week Offs ................ 2024 W6, 2024 W12, 2025 W15
+Week Offs ................ 2024 W12, 2025 W15
 Corrections applied ...... 3
 Scores restored .......... 19
 

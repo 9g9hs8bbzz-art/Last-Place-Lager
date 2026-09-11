@@ -14,6 +14,7 @@ import {
   WORKBOOK_RULES,
   INITIAL_ROSTER,
   isDeclaredWeekOff,
+  isConfirmedPlayed,
   isMangledScoreCell,
   restoreScoreFromMangledDate,
   parseAmerican,
@@ -357,7 +358,10 @@ export async function applyImport(filePath: string, fileName: string, actorId: s
 
     // A week with real picks is a played week even if it appears on the Week
     // Off list; the discrepancy has already been raised as a conflict.
-    const isWeekOff = !hasPicks;
+    // A week the group has explicitly reviewed and confirmed was played can
+    // never be turned back into a Week Off, whatever the source looks like
+    // (spec §83) — 2024 Week 6 is the settled case.
+    const isWeekOff = !hasPicks && !isConfirmedPlayed(season, week);
 
     const row = await prisma.nFLWeek.upsert({
       where: { seasonId_weekNumber: { seasonId: seasonRow.id, weekNumber: week } },

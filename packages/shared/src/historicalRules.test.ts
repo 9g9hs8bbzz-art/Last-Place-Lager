@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
-  restoreScoreFromMangledDate, isMangledScoreCell, isDeclaredWeekOff,
-  DECLARED_WEEKS_OFF, NAMED_CORRECTIONS, findNamedCorrections, WORKBOOK_RULES, INITIAL_ROSTER,
+  restoreScoreFromMangledDate, isMangledScoreCell, isDeclaredWeekOff, isConfirmedPlayed,
+  DECLARED_WEEKS_OFF, RESOLVED_WEEK_OFF_DECISIONS, NAMED_CORRECTIONS, findNamedCorrections,
+  WORKBOOK_RULES, INITIAL_ROSTER,
 } from './historicalRules.js';
 
 describe('ACCEPTANCE (spec §82): Excel date-mangled scores restore exactly', () => {
@@ -44,9 +45,8 @@ describe('ACCEPTANCE (spec §82): Excel date-mangled scores restore exactly', ()
 });
 
 describe('ACCEPTANCE (spec §81, §97): declared Week Offs', () => {
-  it('holds exactly the three declared weeks', () => {
+  it('holds the two weeks that were genuinely not played', () => {
     expect(DECLARED_WEEKS_OFF).toEqual([
-      { season: 2024, week: 6 },
       { season: 2024, week: 12 },
       { season: 2025, week: 15 },
     ]);
@@ -55,6 +55,23 @@ describe('ACCEPTANCE (spec §81, §97): declared Week Offs', () => {
     expect(isDeclaredWeekOff(2024, 12)).toBe(true);
     expect(isDeclaredWeekOff(2025, 15)).toBe(true);
     expect(isDeclaredWeekOff(2025, 14)).toBe(false);
+  });
+
+  it('treats 2024 Week 6 as played — reviewed, decided and closed', () => {
+    // The original specification listed 2024 Week 6 as a Week Off, but the
+    // workbook holds ten real picks for it and the accepted 110/260 totals
+    // require them. The group confirmed the week WAS played.
+    expect(isDeclaredWeekOff(2024, 6)).toBe(false);
+    expect(isConfirmedPlayed(2024, 6)).toBe(true);
+
+    const decision = RESOLVED_WEEK_OFF_DECISIONS.find((d) => d.season === 2024 && d.week === 6)!;
+    expect(decision.playedInstead).toBe(true);
+    expect(decision.reason).toContain('WAS played');
+  });
+
+  it('does not claim any other week was reviewed', () => {
+    expect(isConfirmedPlayed(2024, 12)).toBe(false);
+    expect(isConfirmedPlayed(2025, 15)).toBe(false);
   });
 });
 

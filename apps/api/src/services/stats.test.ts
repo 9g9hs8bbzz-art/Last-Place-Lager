@@ -89,14 +89,22 @@ describe('ACCEPTANCE (spec §81, §97): Week Offs stay intentional', () => {
     expect(picks).toBe(0);
   });
 
-  it('flags the declared-Week-Off-with-data disagreement for audit instead of dropping either', async () => {
-    // 2024 Week 6 is on the accepted Week Off list but the workbook holds 10
-    // real picks for it. Both facts are preserved: the picks import (keeping the
-    // 110/260 totals) and the discrepancy is raised once for an administrator.
-    const conflict = await prisma.importConflict.findFirst({ where: { scope: 'WEEK_OFF_HAS_DATA', seasonYear: 2024, weekNumber: 6 } });
-    expect(conflict).not.toBeNull();
-    expect(conflict!.resolution).toBe('IMPORT_PICKS_AND_FLAG');
+  it('records 2024 Week 6 as a played week — the decision is settled, not re-flagged', async () => {
+    // The specification originally listed 2024 Week 6 as a Week Off. The group
+    // reviewed it and confirmed the week WAS played, which is also what the
+    // 110/260 totals require. The importer must now treat it as an ordinary
+    // settled week and must NOT raise the old disagreement again.
     expect(await prisma.historicalPick.count({ where: { seasonYear: 2024, weekNumber: 6 } })).toBe(10);
+
+    const week = await prisma.nFLWeek.findFirstOrThrow({
+      where: { weekNumber: 6, season: { year: 2024 } },
+      include: { season: true },
+    });
+    expect(week.status).not.toBe('WEEK_OFF');
+    expect(week.weekOffReason).toBeNull();
+
+    const conflict = await prisma.importConflict.findFirst({ where: { scope: 'WEEK_OFF_HAS_DATA', seasonYear: 2024, weekNumber: 6 } });
+    expect(conflict).toBeNull();
   });
 });
 

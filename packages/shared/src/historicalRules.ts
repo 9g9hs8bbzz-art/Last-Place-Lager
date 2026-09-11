@@ -29,13 +29,41 @@ export interface DeclaredWeekOff {
 }
 
 export const DECLARED_WEEKS_OFF: readonly DeclaredWeekOff[] = [
-  { season: 2024, week: 6 },
   { season: 2024, week: 12 },
   { season: 2025, week: 15 },
 ];
 
 export function isDeclaredWeekOff(season: number, week: number): boolean {
   return DECLARED_WEEKS_OFF.some((w) => w.season === season && w.week === week);
+}
+
+/**
+ * Week Off questions that have been asked, answered and closed. Recorded here
+ * so the same question is never reopened by a future re-import or by someone
+ * re-reading the original specification (spec §83).
+ */
+export interface ResolvedWeekOffDecision {
+  season: number;
+  week: number;
+  playedInstead: boolean;
+  reason: string;
+}
+
+export const RESOLVED_WEEK_OFF_DECISIONS: readonly ResolvedWeekOffDecision[] = [
+  {
+    season: 2024,
+    week: 6,
+    playedInstead: true,
+    reason:
+      'The original specification listed 2024 Week 6 as a Week Off, but the workbook holds ten real picks for it and the accepted totals (110 for 2024, 260 overall) require them. Reviewed and confirmed by the group: 2024 Week 6 WAS played. It is a normal settled week, not a Week Off, and must not be re-flagged.',
+  },
+];
+
+/** True when a week was explicitly reviewed and confirmed to have been played. */
+export function isConfirmedPlayed(season: number, week: number): boolean {
+  return RESOLVED_WEEK_OFF_DECISIONS.some(
+    (d) => d.season === season && d.week === week && d.playedInstead,
+  );
 }
 
 /**
