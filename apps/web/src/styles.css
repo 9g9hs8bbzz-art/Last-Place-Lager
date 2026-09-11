@@ -1,0 +1,193 @@
+/* Mobile-first. Designed for a phone in one hand, not for a spreadsheet (spec §90). */
+:root {
+  --bg: #0b1120;
+  --surface: #131c30;
+  --surface-2: #1b2743;
+  --line: #26324f;
+  --text: #eef2fb;
+  --muted: #94a3c4;
+  --gold: #f5b301;
+  --green: #34d399;
+  --red: #f87171;
+  --amber: #fbbf24;
+  --blue: #60a5fa;
+  --radius: 14px;
+  --tap: 48px;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+html, body, #root { height: 100%; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  overscroll-behavior-y: none;
+}
+
+.app {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  /* Leave room for the bottom bar plus the iPhone home indicator. */
+  padding-bottom: calc(72px + env(safe-area-inset-bottom));
+}
+
+.topbar {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: calc(12px + env(safe-area-inset-top)) 16px 12px;
+  background: rgba(11, 17, 32, 0.92);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--line);
+}
+.topbar h1 { font-size: 17px; margin: 0; letter-spacing: 0.2px; }
+.topbar .sub { color: var(--muted); font-size: 12px; }
+
+main { flex: 1; padding: 16px; max-width: 780px; width: 100%; margin: 0 auto; }
+
+/* ---------------------------------------------------------------- bottom nav */
+.bottomnav {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
+  display: grid; grid-auto-flow: column; grid-auto-columns: 1fr;
+  background: rgba(19, 28, 48, 0.97);
+  backdrop-filter: blur(12px);
+  border-top: 1px solid var(--line);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.bottomnav a {
+  min-height: var(--tap);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  color: var(--muted); text-decoration: none; font-size: 11px; font-weight: 600;
+  letter-spacing: 0.3px; padding: 8px 4px;
+}
+.bottomnav a.active { color: var(--gold); }
+.bottomnav .glyph { font-size: 19px; line-height: 1; }
+
+/* ------------------------------------------------------------------- cards */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 14px;
+}
+.card.tight { padding: 12px 14px; }
+.card h2 { margin: 0 0 10px; font-size: 13px; letter-spacing: 1.1px; text-transform: uppercase; color: var(--muted); }
+.card h3 { margin: 0 0 6px; font-size: 17px; }
+
+.row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.row + .row { margin-top: 10px; }
+.stack { display: flex; flex-direction: column; gap: 10px; }
+.muted { color: var(--muted); font-size: 13px; }
+.tiny { font-size: 12px; color: var(--muted); }
+.big { font-size: 28px; font-weight: 700; letter-spacing: -0.5px; }
+.mono { font-variant-numeric: tabular-nums; }
+
+/* ------------------------------------------------------------------ buttons */
+button, .btn {
+  min-height: var(--tap);
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 15px; font-weight: 650;
+  padding: 12px 16px;
+  cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  text-decoration: none;
+}
+button:active, .btn:active { transform: scale(0.99); }
+button:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn-primary { background: var(--gold); color: #1a1405; border-color: var(--gold); }
+.btn-danger { background: transparent; color: var(--red); border-color: #52303a; }
+.btn-row { display: grid; gap: 10px; grid-template-columns: 1fr 1fr; }
+.btn-row.one { grid-template-columns: 1fr; }
+.btn-sm { min-height: 38px; width: auto; padding: 8px 14px; font-size: 13px; }
+
+/* ------------------------------------------------------------------- pills */
+.pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 11px; font-weight: 700; letter-spacing: 0.6px;
+  padding: 5px 10px; border-radius: 999px;
+  background: var(--surface-2); color: var(--muted);
+  border: 1px solid var(--line); white-space: nowrap;
+}
+.pill.good { color: var(--green); border-color: #1e5245; background: #10291f; }
+.pill.bad { color: var(--red); border-color: #5b2b30; background: #2a1418; }
+.pill.warn { color: var(--amber); border-color: #5c4715; background: #2a2110; }
+.pill.info { color: var(--blue); border-color: #24406b; background: #111e33; }
+.pill.gold { color: var(--gold); border-color: #5c4715; background: #2a2110; }
+
+/* ------------------------------------------------------------------ banners */
+.banner {
+  border-radius: 12px; padding: 12px 14px; font-size: 13px;
+  border: 1px solid var(--line); background: var(--surface-2); margin-bottom: 14px;
+}
+.banner.warn { border-color: #5c4715; background: #241c0d; color: #fde68a; }
+.banner.bad { border-color: #5b2b30; background: #26131a; color: #fecaca; }
+.banner.info { border-color: #24406b; background: #101d33; color: #bfdbfe; }
+
+/* ------------------------------------------------------------------- lists */
+.list { display: flex; flex-direction: column; gap: 10px; }
+.item {
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: 12px; padding: 13px 14px;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  text-align: left; width: 100%; min-height: var(--tap); cursor: pointer;
+}
+.item.disabled { opacity: 0.5; cursor: not-allowed; }
+.item.mine { border-color: var(--gold); }
+.item .left { min-width: 0; }
+.item .name { font-weight: 650; font-size: 15px; }
+.item .meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.item .right { text-align: right; flex-shrink: 0; }
+
+/* ------------------------------------------------------------------ tables */
+.table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 0 -16px; padding: 0 16px; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; min-width: 460px; }
+th, td { padding: 9px 8px; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; position: sticky; left: 0; background: var(--bg); }
+th { color: var(--muted); font-size: 11px; letter-spacing: 0.6px; text-transform: uppercase; font-weight: 700; }
+
+/* ------------------------------------------------------------------- forms */
+input, select, textarea {
+  width: 100%; min-height: var(--tap);
+  background: var(--surface-2); color: var(--text);
+  border: 1px solid var(--line); border-radius: 12px;
+  padding: 12px 14px; font-size: 16px; /* 16px stops iOS zooming on focus */
+}
+label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; font-weight: 600; letter-spacing: 0.4px; }
+.field { margin-bottom: 14px; }
+
+/* ------------------------------------------------------------------- misc */
+.tabs { display: flex; gap: 8px; margin-bottom: 14px; overflow-x: auto; padding-bottom: 2px; }
+.tabs button { width: auto; min-height: 38px; padding: 8px 14px; font-size: 13px; white-space: nowrap; }
+.tabs button.active { background: var(--gold); color: #1a1405; border-color: var(--gold); }
+
+.center { text-align: center; }
+.spinner { color: var(--muted); text-align: center; padding: 40px 0; }
+.sheet {
+  position: fixed; inset: 0; z-index: 50;
+  background: rgba(3, 7, 18, 0.7);
+  display: flex; align-items: flex-end; justify-content: center;
+}
+.sheet-inner {
+  background: var(--surface); width: 100%; max-width: 780px;
+  border-radius: 18px 18px 0 0; padding: 18px 16px calc(18px + env(safe-area-inset-bottom));
+  max-height: 88vh; overflow-y: auto; border: 1px solid var(--line);
+}
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.kv { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+.kv:last-child { border-bottom: none; }
+.kv .k { color: var(--muted); }
+.kv .v { font-weight: 650; font-variant-numeric: tabular-nums; }
+
+@media (min-width: 780px) {
+  main { padding: 24px; }
+  .btn-row { grid-template-columns: repeat(2, minmax(0, 220px)); }
+}

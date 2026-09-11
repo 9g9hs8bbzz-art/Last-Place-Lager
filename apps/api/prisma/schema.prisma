@@ -1,0 +1,918 @@
+// First Class Parlays — relational schema.
+//
+// Designed up front for the complete product vision (spec §85, §96) so later
+// phases do not require migrations that disturb historical truth. The single
+// most important constraint in this file is the unique index on
+// MatchupReservation(nflWeekId, nflGameId): it is what makes it impossible for
+// two members to reserve the same NFL game, enforced by the database rather
+// than by application code or the user interface (spec §7, §8).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------- accounts
+
+enum Role {
+  MEMBER
+  ADMIN
+}
+
+model User {
+  id           String   @id @default(cuid())
+  displayName  String   @unique
+  email        String?  @unique
+  passwordHash String
+  role         Role     @default(MEMBER)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Historical spreadsheet rows are matched to accounts by this name, which is
+  // kept separate from displayName so a member can be renamed without breaking
+  // the link to their imported records.
+  legacyName   String?  @unique
+
+  refreshTokens   RefreshToken[]
+  watchedPicks    WatchedPick[]
+  picks           Pick[]
+  reservations    MatchupReservation[]
+  notifications   Notification[]
+  auditLogs       AuditLog[]           @relation("AuditActor")
+  corrections     HistoricalCorrection[]
+  officialLegs    OfficialTicketLeg[]
+  historicalPicks HistoricalPick[]
+  gradeOverrides  ResultAudit[]
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String   @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+// ---------------------------------------------------------- season & weeks
+
+model Season {
+  id        String   @id @default(cuid())
+  year      Int      @unique
+  label     String
+  isCurrent Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  weeks NFLWeek[]
+}
+
+enum WeekStatus {
+  IN_PROGRESS
+  ALL_LOCKED
+  ACTION_REQUIRED
+  READY_TO_PLACE
+  TICKET_UPLOADED
+  OFFICIAL
+  LIVE
+  SETTLED
+  WEEK_OFF
+}
+
+model NFLWeek {
+  id       String     @id @default(cuid())
+  seasonId String
+  season   Season     @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  weekNumber Int
+  status   WeekStatus @default(IN_PROGRESS)
+
+  // A Week Off is an intentional, visible decision — never missing data (spec §78).
+  weekOffReason String?
+  weekOffSetAt  DateTime?
+
+  // Selection window; games outside the eligible days are visible for research
+  // but not selectable (spec §6).
+  selectionOpensAt  DateTime?
+  selectionClosesAt DateTime?
+  /// Day-of-week numbers (0=Sun) eligible for this week's parlay. Admin-configurable.
+  eligibleWeekdays  Int[]     @default([0, 1])
+
+  /// Once the official ticket is confirmed, normal member editing is frozen (spec §57).
+  frozenAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  games          NFLGame[]
+  picks          Pick[]
+  watchedPicks   WatchedPick[]
+  reservations   MatchupReservation[]
+  officialTicket OfficialTicket?
+  parlay         Parlay?
+  recap          WeeklyRecap?
+  readerRuns     ReaderRun[]
+  historicalPicks HistoricalPick[]
+
+  @@unique([seasonId, weekNumber])
+  @@index([status])
+}
+
+// -------------------------------------------------------------- nfl games
+
+model Team {
+  id           String  @id @default(cuid())
+  /// Stable league abbreviation, e.g. "BUF". Never a display string as the key.
+  abbreviation String  @unique
+  location     String
+  nickname     String
+  conference   String?
+  division     String?
+  /// Alternate spellings seen in the historical spreadsheet, e.g. "Bucaneers".
+  aliases      String[] @default([])
+
+  homeGames NFLGame[] @relation("HomeTeam")
+  awayGames NFLGame[] @relation("AwayTeam")
+}
+
+enum GameStatus {
+  SCHEDULED
+  IN_PROGRESS
+  FINAL
+  POSTPONED
+  CANCELED
+}
+
+model NFLGame {
+  id        String   @id @default(cuid())
+  nflWeekId String
+  week      NFLWeek  @relation(fields: [nflWeekId], references: [id], onDelete: Cascade)
+
+  /// Stable identifier from the schedule provider. The reservation key.
+  providerGameId String
+  homeTeamId String
+  homeTeam   Team    @relation("HomeTeam", fields: [homeTeamId], references: [id])
+  awayTeamId String
+  awayTeam   Team    @relation("AwayTeam", fields: [awayTeamId], references: [id])
+
+  kickoffAt  DateTime
+  status     GameStatus @default(SCHEDULED)
+  /// Administrators may open or close individual games for unusual schedules (spec §6).
+  eligible   Boolean    @default(true)
+  eligibilityNote String?
+
+  venue      String?
+  indoor     Boolean @default(false)
+
+  homeScore  Int?
+  awayScore  Int?
+  quarter    String?
+  clock      String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sportsbookEvents SportsbookEvent[]
+  reservations     MatchupReservation[]
+  picks            Pick[]
+  watchedPicks     WatchedPick[]
+  weather          Weather?
+  injuries         Injury[]
+
+  @@unique([nflWeekId, providerGameId])
+  @@index([nflWeekId, kickoffAt])
+}
+
+// -------------------------------------------- sportsbook (Sports Bet Montana)
+
+/// Where a piece of sportsbook data came from. Manually entered data is always
+/// labeled as such so it is never mistaken for a live read (spec §35).
+enum MarketSource {
+  SBM_BOARD_READER
+  ADMIN_MANUAL
+  ADMIN_SCREENSHOT
+  ADMIN_FILE_IMPORT
+}
+
+model SportsbookEvent {
+  id        String   @id @default(cuid())
+  /// Sports Bet Montana's own event identifier.
+  sourceEventId String @unique
+  nflGameId String?
+  nflGame   NFLGame? @relation(fields: [nflGameId], references: [id], onDelete: SetNull)
+
+  homeTeamName String
+  awayTeamName String
+  scheduledAt  DateTime?
+  eventStatus  String?
+  sourceUrl    String?
+
+  /// HTTP validators so repeat reads can be conditional requests (spec §21).
+  etag             String?
+  lastModifiedHttp String?
+
+  lastCheckedAt        DateTime?
+  lastSuccessfulReadAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  markets Market[]
+}
+
+model Market {
+  id       String @id @default(cuid())
+  eventId  String
+  event    SportsbookEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  /// Sports Bet Montana's own market identifier, when it exposes one.
+  sourceMarketId String?
+
+  category     String
+  marketKey    String
+  marketLabel  String
+  subjectKey   String?
+  subjectLabel String?
+  selectionKey String
+  selectionLabel String
+  /// Threshold / spread / total. Part of the selection's identity (spec §28).
+  line         Decimal? @db.Decimal(8, 2)
+
+  /// Identity string excluding price: same selection, different pricing (spec §28).
+  selectionIdentity String @unique
+
+  americanOdds Int?
+  available    Boolean @default(true)
+  source       MarketSource @default(SBM_BOARD_READER)
+  /// Set when an administrator entered or corrected this by hand (spec §35).
+  manualNote   String?
+
+  firstSeenAt    DateTime  @default(now())
+  lastVerifiedAt DateTime  @default(now())
+  /// Only advanced when the app CONFIRMED absence, never on a failed read (spec §33).
+  unavailableSince DateTime?
+  unavailableConfirmations Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  snapshots    MarketSnapshot[]
+  watchedPicks WatchedPick[]
+  picks        Pick[]
+
+  @@index([eventId, category])
+  @@index([lastVerifiedAt])
+}
+
+/// One row per MEANINGFUL change only — identical reads just bump
+/// Market.lastVerifiedAt so the table does not fill with duplicates (spec §29).
+model MarketSnapshot {
+  id       String @id @default(cuid())
+  marketId String
+  market   Market @relation(fields: [marketId], references: [id], onDelete: Cascade)
+
+  americanOdds Int?
+  line         Decimal? @db.Decimal(8, 2)
+  available    Boolean
+  source       MarketSource
+  observedAt   DateTime @default(now())
+  readerRunId  String?
+  readerRun    ReaderRun? @relation(fields: [readerRunId], references: [id], onDelete: SetNull)
+
+  @@index([marketId, observedAt])
+}
+
+// ------------------------------------------------------- board reader health
+
+enum ReaderStatus {
+  IDLE
+  RUNNING
+  COMPLETED
+  STOPPED_BUDGET
+  STOPPED_RATE_LIMIT
+  STOPPED_ERROR
+  PAUSED_FOR_SAFETY
+}
+
+/// One hourly scan. A run lasting 20-30 minutes is normal and healthy (spec §36).
+model ReaderRun {
+  id        String   @id @default(cuid())
+  nflWeekId String?
+  week      NFLWeek? @relation(fields: [nflWeekId], references: [id], onDelete: SetNull)
+
+  status     ReaderStatus @default(RUNNING)
+  startedAt  DateTime     @default(now())
+  finishedAt DateTime?
+  /// Human-readable phase, e.g. "Reading event 7 of 14".
+  progressNote String?
+
+  requestsMade   Int @default(0)
+  requestBudget  Int
+  eventsChecked  Int @default(0)
+  marketsActive  Int @default(0)
+  marketsChanged Int @default(0)
+  marketsNew     Int @default(0)
+  marketsRemoved Int @default(0)
+  marketsRestored Int @default(0)
+  cacheHits      Int @default(0)
+
+  rateLimited    Boolean @default(false)
+  retryAfterSec  Int?
+  errorSummary   String?
+
+  snapshots MarketSnapshot[]
+  errors    ReaderError[]
+
+  @@index([startedAt])
+}
+
+model ReaderError {
+  id          String    @id @default(cuid())
+  readerRunId String?
+  readerRun   ReaderRun? @relation(fields: [readerRunId], references: [id], onDelete: Cascade)
+  kind        String
+  message     String
+  url         String?
+  occurredAt  DateTime  @default(now())
+
+  @@index([occurredAt])
+}
+
+/// Persistent circuit-breaker state so repeated failures reduce traffic rather
+/// than increase it (spec §25). A single row, id = "sbm".
+model ReaderCircuitBreaker {
+  id                 String   @id
+  consecutiveFailures Int     @default(0)
+  openedAt           DateTime?
+  /// The reader will not make a request before this time.
+  cooldownUntil      DateTime?
+  reason             String?
+  lastSuccessAt      DateTime?
+  updatedAt          DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------- the picks
+
+enum PickState {
+  PENDING
+  LOCKED
+  RELEASED
+  SUPERSEDED
+}
+
+/// Saved interest only. Never reserves a matchup, never counts as a pick (spec §11).
+model WatchedPick {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  nflWeekId String
+  week      NFLWeek  @relation(fields: [nflWeekId], references: [id], onDelete: Cascade)
+  nflGameId String?
+  nflGame   NFLGame? @relation(fields: [nflGameId], references: [id], onDelete: SetNull)
+  marketId  String
+  market    Market   @relation(fields: [marketId], references: [id], onDelete: Cascade)
+  note      String?
+  createdAt DateTime @default(now())
+
+  @@unique([userId, marketId])
+  @@index([nflWeekId])
+}
+
+/// A member's selection. PENDING does not reserve; LOCKED does, via the
+/// separate MatchupReservation row created in the same transaction (spec §10, §12).
+model Pick {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  nflWeekId String
+  week      NFLWeek  @relation(fields: [nflWeekId], references: [id], onDelete: Cascade)
+  nflGameId String
+  nflGame   NFLGame  @relation(fields: [nflGameId], references: [id], onDelete: Cascade)
+  marketId  String
+  market    Market   @relation(fields: [marketId], references: [id], onDelete: Restrict)
+
+  state PickState @default(PENDING)
+
+  // Immutable snapshot taken at lock time. Later sportsbook movement must never
+  // silently overwrite these columns (spec §12, §86).
+  lockedAt            DateTime?
+  lockedAmericanOdds  Int?
+  lockedLine          Decimal? @db.Decimal(8, 2)
+  lockedSelectionText String?
+  lockedMarketSourceId String?
+  lockedSource        MarketSource?
+
+  /// Set when the exact locked selection is confirmed gone. The matchup stays
+  /// reserved regardless (spec §32).
+  marketUnavailableAt DateTime?
+  /// Set when the member has seen the alert, so it is not repeated.
+  unavailableAckAt    DateTime?
+
+  outsideGuidelineAtLock Boolean @default(false)
+  releasedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  reservation MatchupReservation?
+  changes     PickChange[]
+  officialLeg OfficialTicketLeg?
+
+  /// One active (non-released, non-superseded) pick per member per week is
+  /// enforced in application logic; this index makes the lookup cheap.
+  @@index([nflWeekId, userId, state])
+  @@index([marketId])
+}
+
+/// Meaningful edits before the ticket is placed, kept for later analysis of
+/// whether changed picks beat original ideas (spec §75).
+model PickChange {
+  id        String   @id @default(cuid())
+  pickId    String
+  pick      Pick     @relation(fields: [pickId], references: [id], onDelete: Cascade)
+  changeKind String
+  fromValue String?
+  toValue   String?
+  changedAt DateTime @default(now())
+
+  @@index([pickId])
+}
+
+/// THE critical table. The unique constraint on (nflWeekId, nflGameId) is what
+/// guarantees that exactly one of two simultaneous LOCK requests succeeds
+/// (spec §7, §8). It is deliberately a separate row from Pick so the database,
+/// not the application, arbitrates the race.
+model MatchupReservation {
+  id        String   @id @default(cuid())
+  nflWeekId String
+  week      NFLWeek  @relation(fields: [nflWeekId], references: [id], onDelete: Cascade)
+  nflGameId String
+  nflGame   NFLGame  @relation(fields: [nflGameId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pickId    String?  @unique
+  pick      Pick?    @relation(fields: [pickId], references: [id], onDelete: SetNull)
+
+  reservedAt DateTime @default(now())
+
+  @@unique([nflWeekId, nflGameId])
+  @@unique([nflWeekId, userId])
+  @@index([userId])
+}
+
+// ------------------------------------------------------------ official ticket
+
+enum TicketStatus {
+  UPLOADED
+  EXTRACTING
+  NEEDS_REVIEW
+  VERIFIED
+  CONFIRMED
+  REJECTED
+}
+
+/// The uploaded Sports Bet Montana ticket is the authoritative record of what
+/// was actually wagered (spec §54, §58).
+model OfficialTicket {
+  id        String   @id @default(cuid())
+  nflWeekId String   @unique
+  week      NFLWeek  @relation(fields: [nflWeekId], references: [id], onDelete: Cascade)
+
+  status       TicketStatus @default(UPLOADED)
+  imagePath    String
+  imageMimeType String?
+  uploadedById String
+  uploadedAt   DateTime @default(now())
+
+  /// Values read off the ticket. Low-confidence extraction requires human
+  /// review before anything is accepted (spec §55).
+  ticketReference  String?
+  ticketPlacedAt   DateTime?
+  combinedAmericanOdds Int?
+  wagerAmount      Decimal? @db.Decimal(10, 2)
+  potentialPayout  Decimal? @db.Decimal(12, 2)
+
+  ocrProvider       String?
+  ocrConfidence     Float?
+  ocrRawText        String?
+  extractionNotes   String?
+
+  confirmedAt   DateTime?
+  confirmedById String?
+
+  legs OfficialTicketLeg[]
+}
+
+enum LegVerification {
+  MATCH
+  MATCH_ODDS_CHANGED
+  SELECTION_MISMATCH
+  MISSING_FROM_TICKET
+  EXTRA_ON_TICKET
+  ADMIN_RESOLVED
+}
+
+enum LegResult {
+  PENDING
+  WIN
+  LOSS
+  PUSH
+  VOID
+}
+
+model OfficialTicketLeg {
+  id       String @id @default(cuid())
+  ticketId String
+  ticket   OfficialTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  /// The bettor this leg belongs to. Assigned during verification.
+  userId String?
+  user   User?  @relation(fields: [userId], references: [id], onDelete: SetNull)
+  /// The member's locked pick this leg corresponds to, when matched.
+  pickId String? @unique
+  pick   Pick?   @relation(fields: [pickId], references: [id], onDelete: SetNull)
+
+  legIndex Int
+
+  // Exactly what the ticket says — the authoritative wager (spec §58).
+  descriptionText String
+  marketKey       String?
+  subjectLabel    String?
+  selectionLabel  String?
+  line            Decimal? @db.Decimal(8, 2)
+  americanOdds    Int?
+
+  verification LegVerification @default(MATCH)
+  verificationNote String?
+
+  // Settlement
+  result        LegResult @default(PENDING)
+  actualValue   Decimal?  @db.Decimal(10, 2)
+  /// Signed distance from the number: bad-beat data (spec §63).
+  margin        Decimal?  @db.Decimal(10, 2)
+  resultNarrative String?
+  gradedAt      DateTime?
+  gradedManually Boolean  @default(false)
+  awaitingManualGrading Boolean @default(false)
+
+  audits ResultAudit[]
+
+  @@unique([ticketId, legIndex])
+  @@index([userId])
+}
+
+/// Every grade change is auditable, including admin overrides (spec §62, §94).
+model ResultAudit {
+  id      String @id @default(cuid())
+  legId   String
+  leg     OfficialTicketLeg @relation(fields: [legId], references: [id], onDelete: Cascade)
+  actorId String?
+  actor   User?  @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  fromResult LegResult?
+  toResult   LegResult
+  reason     String?
+  automatic  Boolean @default(false)
+  createdAt  DateTime @default(now())
+
+  @@index([legId])
+}
+
+/// Week-level parlay record and outcome.
+model Parlay {
+  id        String  @id @default(cuid())
+  nflWeekId String  @unique
+  week      NFLWeek @relation(fields: [nflWeekId], references: [id], onDelete: Cascade)
+
+  combinedAmericanOdds Int?
+  wagerAmount     Decimal? @db.Decimal(10, 2)
+  potentialPayout Decimal? @db.Decimal(12, 2)
+  legsWon  Int @default(0)
+  legsLost Int @default(0)
+  legsPush Int @default(0)
+  settled  Boolean @default(false)
+  won      Boolean?
+  settledAt DateTime?
+}
+
+// ------------------------------------------------------------------ research
+
+/// Cached research evidence. Every row carries its source so a claim can always
+/// be traced back (spec §47).
+model ResearchArticle {
+  id          String   @id @default(cuid())
+  marketId    String?
+  nflGameId   String?
+  subjectKey  String?
+  provider    String
+  title       String
+  url         String?
+  publishedAt DateTime?
+  summary     String?
+  fetchedAt   DateTime @default(now())
+
+  @@index([marketId])
+  @@index([subjectKey])
+}
+
+model ResearchStat {
+  id         String @id @default(cuid())
+  subjectKey String
+  statKey    String
+  /// Which sample this row describes, e.g. "LAST_5", "SEASON_2025", "VS_OPPONENT".
+  sampleKey  String
+  /// Sample size is always stored and always displayed (spec §40).
+  sampleSize Int
+  hits       Int?
+  value      Decimal? @db.Decimal(10, 2)
+  provider   String
+  season     Int?
+  throughWeek Int?
+  fetchedAt  DateTime @default(now())
+  /// Per-game detail so a hit rate can be expanded into its game log (spec §41).
+  gameLog    Json?
+
+  @@unique([subjectKey, statKey, sampleKey, provider])
+  @@index([subjectKey])
+}
+
+model Injury {
+  id         String   @id @default(cuid())
+  nflGameId  String?
+  nflGame    NFLGame? @relation(fields: [nflGameId], references: [id], onDelete: Cascade)
+  subjectKey String
+  playerName String
+  teamAbbrev String?
+  position   String?
+  status     String
+  practiceStatus String?
+  detail     String?
+  provider   String
+  reportedAt DateTime
+  fetchedAt  DateTime @default(now())
+
+  @@index([subjectKey])
+  @@index([nflGameId])
+}
+
+model Weather {
+  id        String   @id @default(cuid())
+  nflGameId String   @unique
+  nflGame   NFLGame  @relation(fields: [nflGameId], references: [id], onDelete: Cascade)
+  indoor    Boolean  @default(false)
+  temperatureF Int?
+  windMph      Int?
+  precipitationChance Int?
+  conditions   String?
+  alerts       String?
+  provider     String
+  forecastFor  DateTime?
+  fetchedAt    DateTime @default(now())
+}
+
+/// AI research summaries. Stored with the evidence they were built from and
+/// never with an invented confidence score (spec §46).
+model ResearchSummary {
+  id        String   @id @default(cuid())
+  marketId  String
+  provider  String
+  caseFor   String[]
+  caseAgainst String[]
+  bottomLine String
+  /// Identifiers of the ResearchArticle / ResearchStat rows behind the summary.
+  sourceRefs Json
+  generatedAt DateTime @default(now())
+
+  @@index([marketId, generatedAt])
+}
+
+// ------------------------------------------------- history, overrides, audit
+
+/// Imported spreadsheet records. Kept distinct from live Picks so historical
+/// truth is never entangled with current sportsbook state (spec §86).
+model HistoricalPick {
+  id        String @id @default(cuid())
+  seasonYear Int
+  weekNumber Int
+  nflWeekId  String?
+  week       NFLWeek? @relation(fields: [nflWeekId], references: [id], onDelete: SetNull)
+
+  userId    String?
+  user      User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+  bettorName String
+
+  pickText     String
+  americanOdds Int
+  matchupText  String?
+  outcomeText  String?
+  result       LegResult
+
+  /// Where this row came from, for traceability back to the workbook cell.
+  sourceSheet String
+  sourceRow   Int
+  sourceCol   Int
+  importId    String
+  import      HistoricalImport @relation(fields: [importId], references: [id], onDelete: Cascade)
+
+  /// True when one or more accepted corrections were applied to this row.
+  corrected   Boolean @default(false)
+  needsReview Boolean @default(false)
+  reviewNote  String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([seasonYear, weekNumber, bettorName])
+  @@index([userId])
+  @@index([seasonYear, weekNumber])
+}
+
+enum ImportStatus {
+  PREVIEW
+  APPLIED
+  ROLLED_BACK
+  FAILED
+}
+
+model HistoricalImport {
+  id        String @id @default(cuid())
+  fileName  String
+  fileHash  String?
+  status    ImportStatus @default(PREVIEW)
+  startedAt DateTime @default(now())
+  finishedAt DateTime?
+
+  seasonsFound     Int @default(0)
+  weeksFound       Int @default(0)
+  uniquePicksFound Int @default(0)
+  duplicatesExcluded Int @default(0)
+  usersMatched     Int @default(0)
+  weekOffsFound    Int @default(0)
+  overridesApplied Int @default(0)
+  needsReviewCount Int @default(0)
+  /// Full preview payload shown to the administrator before applying (spec §84).
+  previewJson Json?
+
+  picks     HistoricalPick[]
+  conflicts ImportConflict[]
+}
+
+/// A disagreement between the raw source and an accepted correction. Surfaced
+/// for audit rather than silently resolved in either direction (spec §82).
+model ImportConflict {
+  id        String @id @default(cuid())
+  importId  String
+  import    HistoricalImport @relation(fields: [importId], references: [id], onDelete: Cascade)
+  scope     String
+  seasonYear Int?
+  weekNumber Int?
+  bettorName String?
+  field      String?
+  rawValue   String?
+  acceptedValue String?
+  resolution String
+  detail     String
+  resolvedAt DateTime?
+  createdAt  DateTime @default(now())
+
+  @@index([importId])
+}
+
+enum CorrectionStatus {
+  PROPOSED
+  APPROVED
+  REMOVED
+}
+
+/// Permanent correction memory (spec §83). An APPROVED correction always wins
+/// over the raw source until an administrator explicitly removes it, so the
+/// same spreadsheet fixes never have to be made twice.
+model HistoricalCorrection {
+  id        String @id @default(cuid())
+  /// What the correction applies to, e.g. "HistoricalPick".
+  entityType String
+  /// Stable coordinates rather than a database id, so a correction survives
+  /// a full re-import that regenerates rows.
+  seasonYear Int?
+  weekNumber Int?
+  bettorName String?
+  entityId   String?
+
+  field          String
+  originalValue  String?
+  correctedValue String
+
+  status     CorrectionStatus @default(APPROVED)
+  reason     String
+  /// Set for the corrections that shipped with the app as already-reviewed.
+  canonical  Boolean @default(false)
+
+  createdById String?
+  createdBy   User?   @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
+  removedAt   DateTime?
+
+  @@unique([entityType, seasonYear, weekNumber, bettorName, field])
+  @@index([status])
+}
+
+/// Generic admin override for live (non-historical) records (spec §83).
+model AdminOverride {
+  id         String @id @default(cuid())
+  entityType String
+  entityId   String
+  field      String
+  originalValue String?
+  overrideValue String
+  reason     String
+  status     CorrectionStatus @default(APPROVED)
+  createdById String?
+  createdAt  DateTime @default(now())
+  removedAt  DateTime?
+
+  @@unique([entityType, entityId, field])
+}
+
+model AuditLog {
+  id       String   @id @default(cuid())
+  actorId  String?
+  actor    User?    @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+  action   String
+  entityType String?
+  entityId   String?
+  summary    String
+  detail     Json?
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([action])
+  @@index([entityType, entityId])
+}
+
+// ------------------------------------------------- notifications & analytics
+
+model Notification {
+  id      String @id @default(cuid())
+  userId  String
+  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind    String
+  title   String
+  body    String
+  /// Deep link target within the app, e.g. "/picks/<id>".
+  link    String?
+  /// Groups repeat alerts about the same thing so members are not spammed (spec §89).
+  dedupeKey String?
+  readAt  DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@unique([userId, dedupeKey])
+}
+
+model WeeklyRecap {
+  id        String  @id @default(cuid())
+  nflWeekId String  @unique
+  week      NFLWeek @relation(fields: [nflWeekId], references: [id], onDelete: Cascade)
+  headline  String
+  bodyJson  Json
+  generatedAt DateTime @default(now())
+}
+
+/// Weekly and season awards. Names are admin-editable (spec §70, §71).
+model Award {
+  id         String @id @default(cuid())
+  awardKey   String
+  label      String
+  scope      String
+  seasonYear Int?
+  weekNumber Int?
+  userId     String?
+  detail     String?
+  value      String?
+  createdAt  DateTime @default(now())
+
+  @@index([scope, seasonYear, weekNumber])
+}
+
+model AwardDefinition {
+  id       String @id @default(cuid())
+  awardKey String @unique
+  label    String
+  description String
+  scope    String
+  enabled  Boolean @default(true)
+}
+
+/// Key/value application settings an administrator can change at runtime:
+/// odds guideline boundaries, reader budget, delays, alert thresholds (spec §30, §20).
+model AppSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+  updatedById String?
+}
