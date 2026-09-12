@@ -13,7 +13,9 @@ import { uploadTicket, verifyTicket, confirmOfficialParlay, resolveLeg, extractT
 import { manuallyGradeLeg, gradeOfficialLeg, refreshLive } from '../services/live.js';
 import { buildPreview, applyImport, recordCorrection } from '../services/historicalImport.js';
 import { runScan, linkEventsToGames } from '../services/readerRun.js';
-import { boardReader, ticketOcrProvider, liveScoreProvider, integrationStatus } from '../providers/registry.js';
+import { boardReader, ticketOcrProvider, liveScoreProvider, scheduleProvider, integrationStatus } from '../providers/registry.js';
+import { ensureWeekAndSync, syncWeekSchedule, currentNflWeek } from '../services/scheduleSync.js';
+import { schedulerStatus, runReaderJob, runLiveJob, runPicksJob } from '../services/scheduler.js';
 import { sniffImageType, ticketImageFilename } from '../lib/imageFiles.js';
 import { selectionKeyOf, normalizeKey, parseAmerican, type MarketCategory } from '@fcp/shared';
 
@@ -98,6 +100,56 @@ export async function adminRoutes(app: FastifyInstance) {
       update: { ...(body.data.eligibleWeekdays ? { eligibleWeekdays: body.data.eligibleWeekdays } : {}) },
     });
     return week;
+  });
+
+  /** What week is it now, so the setup screen can offer a sensible default. */
+  app.get('/admin/current-nfl-week', async () => ({
+    ...currentNflWeek(),
+    scheduleProviderConfigured: scheduleProvider.isConfigured(),
+    scheduleProviderName: scheduleProvider.name,
+  }));
+
+  /**
+   * Create the season and week if needed, then pull the slate from the
+   * schedule provider. This is the one button that takes a fresh installation
+   * from empty to ready (spec §88).
+   */
+  app.post('/admin/setup-week', async (req, reply) => {
+    const body = z
+      .object({ seasonYear: z.number().int().min(2000).max(2100), weekNumber: z.number().int().min(1).max(22) })
+      .safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: 'BAD_REQUEST', message: 'Give the season year and week number.' });
+
+    const result = await ensureWeekAndSync(body.data.seasonYear, body.data.weekNumber, scheduleProvider, req.user!.sub);
+    if (!result.available) {
+      return reply.code(503).send({
+        error: 'SCHEDULE_UNAVAILABLE',
+        message: result.reason ?? 'The schedule could not be retrieved. You can still add games by hand.',
+        nflWeekId: result.nflWeekId,
+      });
+    }
+    return result;
+  });
+
+  /** Re-pull an existing week, for when the NFL moves a kickoff. */
+  app.post('/admin/weeks/:weekId/sync-schedule', async (req, reply) => {
+    const result = await syncWeekSchedule((req.params as { weekId: string }).weekId, scheduleProvider, req.user!.sub);
+    if (!result.available) {
+      return reply.code(503).send({ error: 'SCHEDULE_UNAVAILABLE', message: result.reason });
+    }
+    return result;
+  });
+
+  app.get('/admin/scheduler', async () => schedulerStatus());
+
+  /** Run a background job now rather than waiting for its timer. */
+  app.post('/admin/scheduler/run/:job', async (req, reply) => {
+    const { job } = req.params as { job: string };
+    const jobs: Record<string, () => Promise<void>> = { reader: runReaderJob, live: runLiveJob, picks: runPicksJob };
+    const fn = jobs[job];
+    if (!fn) return reply.code(400).send({ error: 'UNKNOWN_JOB', message: 'Choose reader, live or picks.' });
+    void fn().catch((e) => app.log.error(e));
+    return reply.code(202).send({ started: true, job });
   });
 
   app.post('/admin/weeks/:weekId/week-off', async (req, reply) => {

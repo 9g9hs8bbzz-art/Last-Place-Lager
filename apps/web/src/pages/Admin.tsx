@@ -1,28 +1,247 @@
 import { useEffect, useState } from 'react';
 import { api, ApiError, session, fetchProtectedImage } from '../lib/api';
 import { Card, Banner, Spinner, Pill, KV, Unavailable } from '../components/ui';
-import { odds, relative } from '../lib/format';
+import { odds, relative, kickoff } from '../lib/format';
 import type { WeekInfo } from '../App';
 
-type Tab = 'readiness' | 'reader' | 'ticket' | 'history' | 'settings';
+type Tab = 'setup' | 'readiness' | 'reader' | 'ticket' | 'history' | 'settings';
 
 export function Admin({ week }: { week: WeekInfo | null }) {
-  const [tab, setTab] = useState<Tab>('readiness');
+  const [tab, setTab] = useState<Tab>('setup');
   return (
     <>
       <div className="tabs">
+        <button className={tab === 'setup' ? 'active' : ''} onClick={() => setTab('setup')}>Setup</button>
         <button className={tab === 'readiness' ? 'active' : ''} onClick={() => setTab('readiness')}>Readiness</button>
         <button className={tab === 'reader' ? 'active' : ''} onClick={() => setTab('reader')}>Reader</button>
         <button className={tab === 'ticket' ? 'active' : ''} onClick={() => setTab('ticket')}>Ticket</button>
         <button className={tab === 'history' ? 'active' : ''} onClick={() => setTab('history')}>History</button>
         <button className={tab === 'settings' ? 'active' : ''} onClick={() => setTab('settings')}>Settings</button>
       </div>
+      {tab === 'setup' && <Setup week={week} />}
       {tab === 'readiness' && <Readiness week={week} />}
       {tab === 'reader' && <Reader week={week} />}
       {tab === 'ticket' && <Ticket week={week} />}
       {tab === 'history' && <History />}
       {tab === 'settings' && <Settings />}
     </>
+  );
+}
+
+/**
+ * Setting up a week (spec §88). This is the screen that takes a brand-new
+ * installation from empty to ready: it creates the season and week if needed
+ * and pulls the game slate, with a manual fallback when the schedule source is
+ * unreachable.
+ */
+function Setup({ week }: { week: WeekInfo | null }) {
+  const [suggestion, setSuggestion] = useState<any>(null);
+  const [games, setGames] = useState<any[] | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const loadGames = async (weekId: string) => {
+    const d = await api<{ games: any[] }>(`/weeks/${weekId}/games`);
+    setGames(d.games);
+  };
+
+  useEffect(() => {
+    api('/admin/current-nfl-week').then(setSuggestion).catch(() => {});
+    if (week) void loadGames(week.id).catch(() => {});
+  }, [week?.id]);
+
+  async function setupWeek(seasonYear: number, weekNumber: number) {
+    setBusy(true); setError(null); setMsg(null);
+    try {
+      const r = await api<any>('/admin/setup-week', { body: { seasonYear, weekNumber } });
+      setMsg(
+        `Week ${weekNumber} is ready: ${r.created} games added, ${r.updated} updated, ` +
+        `${r.eligible} eligible for the parlay.` +
+        (r.skippedUnknownTeam?.length ? ` Not recognised: ${r.skippedUnknownTeam.join(', ')}.` : ''),
+      );
+      window.location.reload();
+    } catch (e) {
+      setError((e as ApiError).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function resync() {
+    if (!week) return;
+    setBusy(true); setError(null); setMsg(null);
+    try {
+      const r = await api<any>(`/admin/weeks/${week.id}/sync-schedule`, { body: {} });
+      setMsg(`Refreshed: ${r.created} added, ${r.updated} updated.`);
+      await loadGames(week.id);
+    } catch (e) {
+      setError((e as ApiError).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function toggleEligibility(game: any) {
+    setBusy(true);
+    try {
+      await api(`/admin/games/${game.id}/eligibility`, {
+        method: 'PATCH',
+        body: {
+          eligible: !game.eligible,
+          note: game.eligible ? 'Closed by the parlay manager' : 'Opened by the parlay manager',
+        },
+      });
+      if (week) await loadGames(week.id);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <>
+      {msg && <Banner kind="info">{msg}</Banner>}
+      {error && <Banner kind="bad">{error}</Banner>}
+
+      {!week && (
+        <Card title="No week set up yet">
+          <p className="tiny" style={{ marginTop: 0 }}>
+            Nobody can make a pick until a week exists and its games have been loaded. This is the only
+            setup step.
+          </p>
+          {suggestion && (
+            <>
+              <KV k="It looks like" v={`${suggestion.seasonYear} · Week ${suggestion.weekNumber}`} />
+              <KV k="Schedule source" v={suggestion.scheduleProviderConfigured ? suggestion.scheduleProviderName : 'Not connected'} />
+              <button
+                className="btn-primary"
+                style={{ marginTop: 14 }}
+                disabled={busy}
+                onClick={() => setupWeek(suggestion.seasonYear, suggestion.weekNumber)}
+              >
+                {busy ? 'Setting up…' : `SET UP ${suggestion.seasonYear} WEEK ${suggestion.weekNumber}`}
+              </button>
+            </>
+          )}
+        </Card>
+      )}
+
+      <Card title={week ? `Set up a different week` : 'Or choose the week yourself'}>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            const f = new FormData(e.currentTarget);
+            void setupWeek(Number(f.get('season')), Number(f.get('week')));
+          }}
+        >
+          <div className="grid2">
+            <div className="field">
+              <label>Season year</label>
+              <input name="season" type="number" defaultValue={suggestion?.seasonYear ?? new Date().getFullYear()} required />
+            </div>
+            <div className="field">
+              <label>Week number</label>
+              <input name="week" type="number" min={1} max={22} defaultValue={suggestion?.weekNumber ?? 1} required />
+            </div>
+          </div>
+          <button disabled={busy}>PULL THIS WEEK&apos;S GAMES</button>
+        </form>
+        <p className="tiny" style={{ marginBottom: 0 }}>
+          Safe to run more than once. Existing games are updated rather than duplicated, so use it again if
+          the NFL moves a kickoff.
+        </p>
+      </Card>
+
+      {week && (
+        <Card title={`Week ${week.weekNumber} games`}>
+          <div className="row" style={{ marginBottom: 12 }}>
+            <span className="tiny">
+              Sunday and Monday games are eligible by default. Tap a game to open or close it for this week.
+            </span>
+            <button className="btn-sm" disabled={busy} onClick={resync}>REFRESH</button>
+          </div>
+
+          {!games && <Spinner />}
+          {games && games.length === 0 && (
+            <Unavailable
+              what="No games have been loaded for this week."
+              reason="Use the button above to pull them, or add them by hand if the schedule source is unreachable."
+            />
+          )}
+          {games && games.length > 0 && (
+            <div className="list">
+              {games.map((g) => (
+                <button
+                  key={g.id}
+                  className="item"
+                  disabled={busy}
+                  onClick={() => toggleEligibility(g)}
+                  style={{ cursor: 'pointer' }}
+                >
+                  <div className="left">
+                    <div className="name">{g.label}</div>
+                    <div className="meta">{kickoff(g.kickoffAt)}{g.indoor ? ' · indoor' : ''}</div>
+                  </div>
+                  <div className="right">
+                    <Pill kind={g.eligible ? 'good' : ''}>{g.eligible ? 'Eligible' : 'Not eligible'}</Pill>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </Card>
+      )}
+
+      <SchedulerCard />
+    </>
+  );
+}
+
+/** What the background clock is doing, and a way to nudge it (spec §88). */
+function SchedulerCard() {
+  const [status, setStatus] = useState<any>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+  useEffect(() => { api('/admin/scheduler').then(setStatus).catch(() => {}); }, [msg]);
+  if (!status) return null;
+
+  const label: Record<string, string> = {
+    reader: 'Sports Bet Montana board reader',
+    live: 'Live scores and player statistics',
+    picks: 'Locked-pick monitoring',
+    nextWeek: 'Next-week setup',
+  };
+
+  return (
+    <Card title="Automatic background jobs">
+      {msg && <Banner kind="info">{msg}</Banner>}
+      {!status.started && (
+        <p className="tiny" style={{ marginTop: 0 }}>
+          The background clock is not running in this process. That is normal on your own computer if you
+          started the API with the scheduler switched off.
+        </p>
+      )}
+      {status.jobs.map((j: any) => (
+        <KV
+          key={j.job}
+          k={label[j.job] ?? j.job}
+          v={`${j.running ? 'running now · ' : ''}every ${j.everyMinutes} min`}
+        />
+      ))}
+      <div className="btn-row" style={{ marginTop: 14 }}>
+        <button
+          className="btn-sm"
+          onClick={async () => { await api('/admin/scheduler/run/picks', { body: {} }); setMsg('Checking locked picks now.'); }}
+        >
+          CHECK PICKS NOW
+        </button>
+        <button
+          className="btn-sm"
+          onClick={async () => { await api('/admin/scheduler/run/live', { body: {} }); setMsg('Refreshing live scores now.'); }}
+        >
+          REFRESH SCORES NOW
+        </button>
+      </div>
+    </Card>
   );
 }
 

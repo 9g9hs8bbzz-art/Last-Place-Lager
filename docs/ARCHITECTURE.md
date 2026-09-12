@@ -149,6 +149,39 @@ try to leave the upload directory.
 
 ---
 
+## Schedule, live scores and the background clock
+
+NFL games and live scores come from **ESPN's free public endpoints** — no key,
+no account, no monthly fee. They are also **undocumented and unofficial**, so
+`providers/espn.ts` is written on the assumption that they will change:
+
+- Every parser is total. A null in the events array, an unknown status, a
+  column that was renamed — each is skipped, never guessed at. A payload it
+  cannot read becomes `DATA_UNAVAILABLE`, so a shape change degrades the app
+  into honest emptiness rather than wrong numbers.
+- An empty slate is reported as unavailable rather than as "the NFL scheduled
+  no games", because the former is overwhelmingly more likely.
+- `npm run check:espn` prints exactly what came back and whether the app can
+  read it — the one command to run when something looks wrong.
+- It sits behind `ScheduleProvider` and `LiveScoreProvider`, so swapping in a
+  paid feed later is a change to that file and the registry.
+
+`services/scheduler.ts` is the background clock:
+
+| Job | Interval | Guard |
+|---|---|---|
+| Board reader | hourly | Also obeys its own circuit breaker and request budget; skipped once the ticket is confirmed |
+| Live scores | 2 minutes | Only while a game is in progress or within 30 minutes of kickoff |
+| Locked-pick monitoring | 10 minutes | Purely local; no external requests |
+| Next-week setup | 6 hours | Never touches a week an administrator declared off |
+
+No job can overlap itself, so a 25-minute scan is never joined by the next
+hour's. A job that throws is logged and skipped rather than taking the process
+down. `FCP_SCHEDULER=off` disables all of it, which is what tests and one-off
+scripts run with.
+
+---
+
 ## Market identity
 
 `selectionKeyOf()` builds an identity from event + category + market + subject +
@@ -255,14 +288,16 @@ apps/web/src/
 
 ## Tests
 
-206 in total, run in CI against a real PostgreSQL service container.
+252 in total, run in CI against a real PostgreSQL service container.
 
 - `packages/shared` — 76 pure-logic tests: odds maths, grading, guideline,
   market identity, all 19 score restorations, the settled Week Off decisions.
-- `apps/api` — 130 tests against a real PostgreSQL database, including
+- `apps/api` — 176 tests against a real PostgreSQL database, including
   `src/test/acceptance.test.ts`, which is spec §97 written out in order, and
   `src/routes/ticketImage.test.ts`, which probes the one file-serving route the
-  way an attacker would.
+  way an attacker would, and `src/providers/espn.test.ts`, which pins the ESPN
+  parsers against recorded payloads so a shape change is caught here rather
+  than on a Sunday.
 
 CI also re-runs the historical import against the real workbook and fails if it
 stops landing on exactly 260 unique picks.
