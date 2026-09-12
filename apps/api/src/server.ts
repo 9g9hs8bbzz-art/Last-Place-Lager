@@ -1,6 +1,10 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import multipart from '@fastify/multipart';
+import fastifyStatic from '@fastify/static';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { existsSync } from 'node:fs';
 import { env, assertProductionSecrets } from './lib/env.js';
 import { prisma } from './lib/prisma.js';
 import { authRoutes } from './routes/auth.js';
@@ -41,6 +45,36 @@ export async function buildServer() {
   await app.register(pickRoutes, { prefix: '/api' });
   await app.register(adminRoutes, { prefix: '/api' });
 
+  // Serve the built web client from the same process, so a deployment is one
+  // service rather than two. Registered AFTER the API routes so /api always
+  // wins, and with a single-page-app fallback so a deep link like /picks or
+  // /admin opens correctly on a refresh.
+  // src/server.ts in development, dist/server.js in production — both sit two
+  // levels below apps/web/dist.
+  const hereDir = path.dirname(fileURLToPath(import.meta.url));
+  const webDist = env.webDistDir
+    ? path.resolve(env.webDistDir)
+    : path.resolve(hereDir, '..', '..', 'web', 'dist');
+  if (existsSync(path.join(webDist, 'index.html'))) {
+    await app.register(fastifyStatic, { root: webDist, index: false, wildcard: false });
+
+    app.setNotFoundHandler((req, reply) => {
+      // An unmatched /api path is a genuine 404, not a page.
+      if (req.url.startsWith('/api/') || req.url === '/health') {
+        return reply.code(404).send({ error: 'NOT_FOUND', message: 'No such endpoint.' });
+      }
+      // Anything else is a client route: hand back the app shell.
+      return reply.sendFile('index.html');
+    });
+
+    app.log.info(`Serving the web client from ${webDist}`);
+  } else {
+    app.log.warn(
+      `No built web client found at ${webDist}. The API will run, but nothing will be served at the root. ` +
+        'Run "npm run build" first.',
+    );
+  }
+
   app.setErrorHandler((error: { statusCode?: number; message?: string }, _req, reply) => {
     app.log.error(error as Error);
     // Internal details never reach the client.
@@ -63,6 +97,17 @@ if (isDirectRun) {
     // Background work starts only for a real server process, never for tests
     // or one-off scripts that import buildServer().
     startScheduler();
+
+    // Uploaded ticket images are the group's authoritative record of what was
+    // wagered, and most hosting platforms wipe the filesystem on every
+    // redeploy. Say so loudly rather than letting them quietly disappear.
+    if (env.isProduction && !process.env.UPLOAD_DIR) {
+      console.warn(
+        '[uploads] UPLOAD_DIR is not set. Ticket images are being written inside the application ' +
+          'directory, which most hosts erase on redeploy. Attach a persistent volume and point ' +
+          'UPLOAD_DIR at it — see docs/SETUP.md.',
+      );
+    }
   } catch (err) {
     app.log.error(err);
     process.exit(1);

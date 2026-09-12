@@ -29,6 +29,12 @@ export const env = {
   refreshTokenDays: num('JWT_REFRESH_DAYS', 60),
 
   uploadDir: str('UPLOAD_DIR', 'uploads'),
+  /**
+   * Where the built web client lives, served by this same process. Empty means
+   * "work it out from where this file is", which is more reliable than a path
+   * relative to whatever directory the host started us in.
+   */
+  webDistDir: str('WEB_DIST_DIR'),
 
   sbm: {
     baseUrl: str('SBM_BOARD_BASE_URL'),
