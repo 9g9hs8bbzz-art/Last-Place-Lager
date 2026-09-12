@@ -6,6 +6,8 @@ import { sweatBoard } from '../services/live.js';
 import { leaderboard, bettorProfile, groupParlayStats, groupTendencies, seasonAwards, weeklyAwards, earlyPickValue } from '../services/stats.js';
 import { listNotifications, markRead } from '../services/notifications.js';
 import { readerHealth } from '../services/marketMonitor.js';
+import { readTicketImage, extensionFor } from '../lib/imageFiles.js';
+import { env } from '../lib/env.js';
 import { freshnessLabel } from '@fcp/shared';
 
 export async function appRoutes(app: FastifyInstance) {
@@ -39,6 +41,59 @@ export async function appRoutes(app: FastifyInstance) {
   app.get('/weeks/:weekId/sweat', async (req) => sweatBoard((req.params as { weekId: string }).weekId));
 
   app.get('/weeks/:weekId/awards', async (req) => ({ awards: await weeklyAwards((req.params as { weekId: string }).weekId) }));
+
+  /**
+   * The official ticket photo (spec §93: ticket images are protected data).
+   *
+   * Guards, in order:
+   *   1. Signed in. The route sits behind requireAuth, so it is never public.
+   *   2. Authorised. Members may see a ticket once the parlay is CONFIRMED —
+   *      at that point it is the group's official record. Before confirmation
+   *      it is the parlay manager's working material, so only an administrator
+   *      may see it.
+   *   3. No caller-supplied path. The file is located from the ticket row, and
+   *      the resolved path is proven to sit inside the upload directory.
+   *   4. No caller-supplied type. The Content-Type is read from the file's own
+   *      leading bytes and must be a raster photo format; SVG and PDF are not
+   *      accepted anywhere in this path because both can carry script.
+   *   5. Inert delivery. nosniff stops the browser second-guessing the type, a
+   *      restrictive Content-Security-Policy makes the response unable to run
+   *      anything, and the response is marked private and uncacheable so a
+   *      shared cache never retains a ticket.
+   */
+  app.get('/tickets/:ticketId/image', async (req, reply) => {
+    const { ticketId } = req.params as { ticketId: string };
+
+    const ticket = await prisma.officialTicket.findUnique({
+      where: { id: ticketId },
+      include: { week: { include: { season: true } } },
+    });
+
+    // The same response whether the ticket is missing or the member may not
+    // see it, so the route cannot be used to discover which weeks have tickets.
+    const mayView = ticket && (req.user!.role === 'ADMIN' || ticket.status === 'CONFIRMED');
+    if (!ticket || !mayView) {
+      return reply.code(404).send({ error: 'NOT_FOUND', message: 'That ticket image is not available.' });
+    }
+
+    const image = await readTicketImage(env.uploadDir, ticket.imagePath);
+    if (!image) {
+      return reply.code(404).send({
+        error: 'IMAGE_UNAVAILABLE',
+        message: 'The ticket image could not be read. It may need to be uploaded again.',
+      });
+    }
+
+    const filename = `week-${ticket.week.season.year}-${ticket.week.weekNumber}-ticket.${extensionFor(image.contentType)}`;
+
+    return reply
+      .header('Content-Type', image.contentType)
+      .header('X-Content-Type-Options', 'nosniff')
+      .header('Content-Security-Policy', "default-src 'none'; sandbox")
+      .header('Cache-Control', 'private, no-store')
+      .header('Content-Disposition', `inline; filename="${filename}"`)
+      .send(image.bytes);
+  });
 
   /** The weekly recap, generated from settled results (spec §76). */
   app.get('/weeks/:weekId/recap', async (req) => {

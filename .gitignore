@@ -10,4 +10,5 @@ apps/web/dev-dist/
 coverage/
 uploads/*
 !uploads/.gitkeep
+apps/api/uploads/
 *.tsbuildinfo

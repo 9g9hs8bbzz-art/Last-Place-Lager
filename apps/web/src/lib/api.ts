@@ -119,3 +119,20 @@ export async function logout() {
   }
   session.clear();
 }
+
+/**
+ * Fetch a protected image and turn it into a URL an <img> can use.
+ *
+ * The API authenticates with a bearer token, and an <img src> cannot send an
+ * Authorization header, so the bytes are fetched here and handed to the browser
+ * as a blob URL. Revoke it when the view goes away.
+ */
+export async function fetchProtectedImage(path: string): Promise<string | null> {
+  const token = session.accessToken;
+  const res = await fetch(`/api${path}`, {
+    headers: token ? { authorization: `Bearer ${token}` } : {},
+  });
+  if (res.status === 401 && (await refreshSession())) return fetchProtectedImage(path);
+  if (!res.ok) return null;
+  return URL.createObjectURL(await res.blob());
+}

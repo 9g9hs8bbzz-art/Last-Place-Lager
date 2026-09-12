@@ -78,7 +78,7 @@ Sign in as `Austin` / `ChangeMe!2026`.
 npm test
 ```
 
-174 tests. `apps/api/src/test/acceptance.test.ts` is the specification's own
+206 tests. `apps/api/src/test/acceptance.test.ts` is the specification's own
 acceptance checklist, written out in order — ten members racing for one game,
 the reader refusing to be rushed, ticket odds changing, the official freeze, and
 the historical import landing on exactly 260 picks.

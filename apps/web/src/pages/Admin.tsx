@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api, ApiError, session } from '../lib/api';
+import { api, ApiError, session, fetchProtectedImage } from '../lib/api';
 import { Card, Banner, Spinner, Pill, KV, Unavailable } from '../components/ui';
 import { odds, relative } from '../lib/format';
 import type { WeekInfo } from '../App';
@@ -182,6 +182,46 @@ function Reader({ week }: { week: WeekInfo | null }) {
   );
 }
 
+/**
+ * The uploaded ticket photo. The API requires a bearer token, so the bytes are
+ * fetched and shown as a blob rather than linked directly.
+ */
+function TicketImage({ ticketId }: { ticketId: string }) {
+  const [url, setUrl] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let objectUrl: string | null = null;
+    let cancelled = false;
+    fetchProtectedImage(`/tickets/${ticketId}/image`).then((u) => {
+      if (cancelled) {
+        if (u) URL.revokeObjectURL(u);
+        return;
+      }
+      objectUrl = u;
+      if (u) setUrl(u);
+      else setFailed(true);
+    });
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [ticketId]);
+
+  if (failed) {
+    return <Unavailable what="The ticket image could not be loaded." reason="It may need to be uploaded again." />;
+  }
+  if (!url) return <Spinner label="Loading the ticket photo…" />;
+
+  return (
+    <img
+      src={url}
+      alt="The official Sports Bet Montana ticket"
+      style={{ width: '100%', borderRadius: 12, border: '1px solid var(--line)' }}
+    />
+  );
+}
+
 /** Upload, verify and confirm the official ticket (spec §54-§57). */
 function Ticket({ week }: { week: WeekInfo | null }) {
   const [data, setData] = useState<any>(null);
@@ -251,6 +291,13 @@ function Ticket({ week }: { week: WeekInfo | null }) {
 
       {ticket && (
         <>
+          <Card title="The ticket">
+            <p className="tiny" style={{ marginTop: 0 }}>
+              Check each leg below against this photo before confirming.
+            </p>
+            <TicketImage ticketId={ticket.id} />
+          </Card>
+
           <Card title="Ticket status">
             <KV k="Status" v={String(ticket.status).replace(/_/g, ' ')} />
             <KV k="Uploaded" v={relative(ticket.uploadedAt)} />

@@ -115,6 +115,40 @@ returns zero markets is recorded as a parse error, never as an emptied board.
 
 ---
 
+## The ticket image route
+
+The uploaded ticket photo is the only member-supplied file the app stores and
+later serves back, so both ends treat it as hostile.
+
+**On upload.** The browser's declared Content-Type is ignored. The real type is
+read from the file's leading bytes and must be JPEG, PNG, WebP, GIF or HEIC.
+SVG and PDF are refused because both can carry script, which would become
+stored cross-site scripting on the API's own origin. The name on disk is built
+from the week id, the clock and the sniffed type — nothing the uploader chose
+reaches the filesystem.
+
+**On read**, `GET /api/tickets/:ticketId/image` applies five guards in order:
+
+1. **Signed in.** The route sits behind `requireAuth`; it is never public.
+2. **Authorised.** Members may view a ticket once the parlay is `CONFIRMED`, at
+   which point it is the group's official record. Before that it is the parlay
+   manager's working material and only an administrator may see it. A member
+   asking for an unconfirmed ticket gets a 404, not a 403, so the route cannot
+   be used to discover which weeks have a ticket waiting.
+3. **No caller-supplied path.** The file is located from the ticket row, and the
+   resolved path is proven to sit inside the upload directory — a check that
+   also rejects a sibling directory sharing the same prefix.
+4. **No caller-supplied type.** The Content-Type is re-derived from the bytes on
+   disk every time, never from the stored label.
+5. **Inert delivery.** `nosniff`, a `default-src 'none'; sandbox` policy, and
+   `private, no-store` so a ticket never rests in a shared cache.
+
+`routes/ticketImage.test.ts` probes it the way an attacker would: anonymous and
+forged tokens, wrong role, disguised HTML, SVG and PDF, and stored paths that
+try to leave the upload directory.
+
+---
+
 ## Market identity
 
 `selectionKeyOf()` builds an identity from event + category + market + subject +
@@ -221,9 +255,14 @@ apps/web/src/
 
 ## Tests
 
-174 in total.
+206 in total, run in CI against a real PostgreSQL service container.
 
-- `packages/shared` — 74 pure-logic tests: odds maths, grading, guideline,
-  market identity, all 19 score restorations.
-- `apps/api` — 100 tests against a real PostgreSQL database, including
-  `src/test/acceptance.test.ts`, which is spec §97 written out in order.
+- `packages/shared` — 76 pure-logic tests: odds maths, grading, guideline,
+  market identity, all 19 score restorations, the settled Week Off decisions.
+- `apps/api` — 130 tests against a real PostgreSQL database, including
+  `src/test/acceptance.test.ts`, which is spec §97 written out in order, and
+  `src/routes/ticketImage.test.ts`, which probes the one file-serving route the
+  way an attacker would.
+
+CI also re-runs the historical import against the real workbook and fails if it
+stops landing on exactly 260 unique picks.
