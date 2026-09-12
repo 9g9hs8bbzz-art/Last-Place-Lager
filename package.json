@@ -3,8 +3,14 @@
   "private": true,
   "version": "1.0.0",
   "description": "Last Place Lager's First Class Parlays - private weekly NFL parlay coordination, research and tracking app",
-  "workspaces": ["packages/shared", "apps/api", "apps/web"],
-  "engines": { "node": ">=20" },
+  "workspaces": [
+    "packages/shared",
+    "apps/api",
+    "apps/web"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "build": "npm run build -w @fcp/shared && npm run build -w @fcp/api && npm run build -w @fcp/web",
     "test": "npm run test -w @fcp/shared && npm run test -w @fcp/api",
@@ -12,6 +18,7 @@
     "dev:web": "npm run dev -w @fcp/web",
     "db:push": "npm run db:push -w @fcp/api",
     "db:seed": "npm run db:seed -w @fcp/api",
-    "import:history": "npm run import:history -w @fcp/api"
+    "import:history": "npm run import:history -w @fcp/api",
+    "check:espn": "npm run check:espn -w @fcp/api"
   }
 }

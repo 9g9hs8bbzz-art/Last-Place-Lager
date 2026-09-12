@@ -12,7 +12,8 @@
     "db:generate": "prisma generate --schema prisma/schema.prisma",
     "db:seed": "tsx src/scripts/seed.ts",
     "import:history": "tsx src/scripts/importHistory.ts",
-    "reader:run": "tsx src/scripts/runReader.ts"
+    "reader:run": "tsx src/scripts/runReader.ts",
+    "check:espn": "tsx src/scripts/checkEspn.ts"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.1",

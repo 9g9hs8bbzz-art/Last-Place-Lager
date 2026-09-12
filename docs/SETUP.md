@@ -208,7 +208,23 @@ npm run import:history -- data/Last_Place_Lagers_First_Class_Parlays.xlsx --appl
 
 **What you should see:** `Imported. 260 picks written.`
 
-### Step 1.9 — Start it up
+### Step 1.9 — Check that the NFL data source works
+
+**What you're doing:** making sure the app can reach ESPN, which is where the
+game schedule and live scores come from. It's free and needs no account.
+
+```
+npm run check:espn
+```
+
+**What you should see:** a list of this week's NFL games, ending with
+`ESPN looks healthy. Nothing to do.`
+
+If it says the schedule could not be read, the app still works — you'd just add
+games by hand from the Admin screen — but tell me and I'll look at it. ESPN's
+endpoints are unofficial, so they can change without warning.
+
+### Step 1.10 — Start it up
 
 **What you're doing:** turning both programs on.
 
@@ -229,7 +245,7 @@ npm run dev:web
 
 **What you should see:** a line with `Local: http://localhost:5173/`
 
-### Step 1.10 — Sign in
+### Step 1.11 — Sign in
 
 Open your web browser and go to **http://localhost:5173**
 
@@ -238,6 +254,23 @@ in as `Austin` with password `ChangeMe!2026`.
 
 You're running First Class Parlays. Tap through the five tabs at the bottom.
 **Stats** already has all 260 historical picks in it.
+
+### Step 1.12 — Set up the week
+
+**What you're doing:** creating the current NFL week and loading its games.
+Until you do this, nobody can make a pick.
+
+Tap **ADMIN** at the bottom, then the **Setup** tab. It will say something like
+*It looks like 2026 · Week 1* with a big button underneath.
+
+Press **SET UP 2026 WEEK 1**.
+
+**What you should see:** the week's games appear in a list, with Sunday and
+Monday games marked **Eligible** and any Thursday game marked **Not eligible**.
+Tap any game to open or close it for this week.
+
+That's the only setup step. From then on the app prepares each following week
+by itself.
 
 ---
 
@@ -253,8 +286,8 @@ are connected.
 | Source | What you lose without it | How to connect |
 |---|---|---|
 | Sports Bet Montana board reader | The odds members pick from | Part 3 below |
-| NFL schedule | Each week's games appear automatically | Set `NFL_SCHEDULE_API_KEY` |
-| Live scores & stats | The Sweat and automatic grading | Set `NFL_LIVE_API_KEY` |
+| NFL schedule (ESPN) | Each week's games appear automatically | **Already connected.** Free, no key |
+| Live scores & stats (ESPN) | The Sweat and automatic grading | **Already connected.** Free, no key |
 | Player statistics | Hit rates and matchup research | Set `NFL_STATS_API_KEY` |
 | Injuries | Injury notes in research | Set `INJURY_API_KEY` |
 | Weather | Forecasts for outdoor games | Set `WEATHER_API_KEY` |
@@ -414,6 +447,8 @@ full-screen with no browser bars, like a real app.
 | Sign-in says name and password don't match | Wrong name or password | Names are as listed in the roster; the starting password is `ChangeMe!2026` |
 | A screen says DATA CURRENTLY UNAVAILABLE | That source isn't connected | See Part 2 — this is correct behaviour, not a bug |
 | Ticket upload says "That file is not a photo" | The file isn't a real image, whatever its name says | Upload a JPEG, PNG, WebP, GIF or HEIC photo |
+| Home says "No NFL week has been set up yet" | The week hasn't been created | Admin → Setup → press the big button |
+| Setup says the schedule couldn't be retrieved | ESPN is unreachable or has changed | Run `npm run check:espn`; meanwhile add games by hand |
 | Reader says PAUSED FOR SAFETY | Sports Bet Montana asked for less traffic | Leave it alone. It resumes by itself |
 
 ### Checking everything still works
@@ -422,7 +457,7 @@ full-screen with no browser bars, like a real app.
 npm test
 ```
 
-**What you should see:** `Tests  206 passed`. This runs every rule in the app,
+**What you should see:** `Tests  252 passed`. This runs every rule in the app,
 including the ten-people-lock-the-same-game test and the check that the
 historical import still produces exactly 260 picks.
 

@@ -7,6 +7,7 @@ import { authRoutes } from './routes/auth.js';
 import { pickRoutes } from './routes/picks.js';
 import { appRoutes } from './routes/public.js';
 import { adminRoutes } from './routes/admin.js';
+import { startScheduler, stopScheduler } from './services/scheduler.js';
 
 export async function buildServer() {
   assertProductionSecrets();
@@ -59,12 +60,16 @@ if (isDirectRun) {
   try {
     await app.listen({ port: env.port, host: '0.0.0.0' });
     console.log(`First Class Parlays API listening on http://localhost:${env.port}`);
+    // Background work starts only for a real server process, never for tests
+    // or one-off scripts that import buildServer().
+    startScheduler();
   } catch (err) {
     app.log.error(err);
     process.exit(1);
   }
   for (const signal of ['SIGINT', 'SIGTERM'] as const) {
     process.on(signal, async () => {
+      stopScheduler();
       await app.close();
       await prisma.$disconnect();
       process.exit(0);

@@ -9,6 +9,7 @@
 import { env } from '../lib/env.js';
 import { dataUnavailable } from '@fcp/shared';
 import { SbmBoardReader } from './sbmBoardReader.js';
+import { espnProvider } from './espn.js';
 import type {
   AiResearchProvider, BoardReaderProvider, InjuryProvider, LiveScoreProvider,
   NewsProvider, ScheduleProvider, StatsProvider, TicketOcrProvider, WeatherProvider,
@@ -22,24 +23,13 @@ function unavailable(provider: string) {
 
 export const boardReader: BoardReaderProvider = new SbmBoardReader();
 
-export const scheduleProvider: ScheduleProvider = {
-  name: 'NFL_SCHEDULE',
-  isConfigured: () => Boolean(env.providers.schedule && env.providers.scheduleKey),
-  async getWeekSchedule() {
-    return unavailable('NFL_SCHEDULE');
-  },
-};
-
-export const liveScoreProvider: LiveScoreProvider = {
-  name: 'NFL_LIVE',
-  isConfigured: () => Boolean(env.providers.liveKey),
-  async getGameStates() {
-    return unavailable('NFL_LIVE');
-  },
-  async getPlayerStats() {
-    return unavailable('NFL_LIVE');
-  },
-};
+/**
+ * Schedule and live scores both come from ESPN's free public endpoints. They
+ * need no key, so they are on by default; set NFL_DATA_SOURCE to anything else
+ * to switch them off and fall back to entering games by hand.
+ */
+export const scheduleProvider: ScheduleProvider = espnProvider;
+export const liveScoreProvider: LiveScoreProvider = espnProvider;
 
 export const statsProvider: StatsProvider = {
   name: 'NFL_STATS',
@@ -96,8 +86,8 @@ export const ticketOcrProvider: TicketOcrProvider = {
 export function integrationStatus() {
   const entries: { key: string; name: string; configured: boolean; purpose: string; envVar: string }[] = [
     { key: 'sbm', name: 'Sports Bet Montana Board Reader', configured: boardReader.isConfigured(), purpose: 'The odds members pick from.', envVar: 'SBM_BOARD_BASE_URL' },
-    { key: 'schedule', name: 'NFL Schedule', configured: scheduleProvider.isConfigured(), purpose: 'Creates each week\'s games automatically.', envVar: 'NFL_SCHEDULE_API_KEY' },
-    { key: 'live', name: 'NFL Live Scores & Stats', configured: liveScoreProvider.isConfigured(), purpose: 'Powers The Sweat and automatic grading.', envVar: 'NFL_LIVE_API_KEY' },
+    { key: 'schedule', name: 'NFL Schedule (ESPN)', configured: scheduleProvider.isConfigured(), purpose: 'Pulls each week\'s games automatically. Free, no key needed.', envVar: 'NFL_DATA_SOURCE' },
+    { key: 'live', name: 'NFL Live Scores & Stats (ESPN)', configured: liveScoreProvider.isConfigured(), purpose: 'Powers The Sweat and automatic grading. Free, no key needed.', envVar: 'NFL_DATA_SOURCE' },
     { key: 'stats', name: 'Historical Player Statistics', configured: statsProvider.isConfigured(), purpose: 'Hit rates and matchup research.', envVar: 'NFL_STATS_API_KEY' },
     { key: 'injuries', name: 'Injury Reports', configured: injuryProvider.isConfigured(), purpose: 'Injury context on research panels.', envVar: 'INJURY_API_KEY' },
     { key: 'weather', name: 'Weather', configured: weatherProvider.isConfigured(), purpose: 'Forecasts for outdoor games.', envVar: 'WEATHER_API_KEY' },
