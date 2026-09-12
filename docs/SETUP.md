@@ -400,28 +400,101 @@ standings, history, awards and the weekly recap.
 Once it works on your computer, you need it somewhere that's always on.
 
 **What you're doing:** renting a small computer on the internet to run the app
-and the database.
+and the database. The app is built as a **single service** — one thing to
+deploy, not two — and it applies its own database updates on every start.
 
-The simplest option is **Railway** (https://railway.app) — roughly $5-10 a
-month, and it handles the database for you.
+**Railway** (https://railway.app) is the simplest option, roughly $5–10 a month
+including the database.
 
-1. Go to https://railway.app and sign up.
-2. Click **New Project → Deploy from GitHub repo** and choose this repository.
-3. Click **New → Database → Add PostgreSQL**. Railway creates the database and
-   sets `DATABASE_URL` automatically — you don't have to type it.
-4. Click your app service, then the **Variables** tab. Add each line from your
-   `apps/api/.env` file **except** `DATABASE_URL` (Railway already did that
-   one). Use the same long secrets you generated.
-5. Add one more variable: `NODE_ENV` set to `production`.
-6. Click the **Settings** tab, find **Generate Domain**, and click it.
+### Step 5.1 — Create the project
 
-**What you should see:** a web address like
-`first-class-parlays.up.railway.app`. That's the link you send to the group.
+1. Go to **https://railway.app** and sign up with your GitHub account.
+2. Click **New Project → Deploy from GitHub repo**.
+3. Choose **Last-Place-Lager**. Railway starts building straight away — let it.
 
-7. Open that address, sign in as Austin, and run through step 1.8's import
-   again from **Admin → History** by uploading the spreadsheet there.
+### Step 5.2 — Add the database
 
-### Getting it onto everyone's home screen
+1. In your project, click **New → Database → Add PostgreSQL**.
+
+**What you should see:** a Postgres box appears next to your app. Railway sets
+`DATABASE_URL` for you automatically — you never type it.
+
+### Step 5.3 — Add a disk for the ticket photos
+
+**Why:** Railway wipes the app's files every time it redeploys. Without this,
+your uploaded ticket photos would disappear — and the ticket is the group's
+official record of what was wagered.
+
+1. Click your **app** service (not the database), then the **Settings** tab.
+2. Find **Volumes** and click **Add Volume**.
+3. Set the mount path to exactly:
+   ```
+   /data
+   ```
+4. Click **Add**.
+
+### Step 5.4 — Add your settings
+
+Click your app service, then the **Variables** tab, then **New Variable** for
+each of these:
+
+| Name | Value |
+|---|---|
+| `NODE_ENV` | `production` |
+| `JWT_ACCESS_SECRET` | a long random string (see below) |
+| `JWT_REFRESH_SECRET` | a different long random string |
+| `UPLOAD_DIR` | `/data/uploads` |
+| `PUBLIC_APP_URL` | leave until step 5.5, then your real address |
+
+To make each random string, run this on your own computer and copy the result:
+
+```
+node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
+```
+
+Run it twice — the two secrets must be different.
+
+> The app **refuses to start** in production if these are left at their
+> defaults. That's deliberate: it would rather not run than run insecurely.
+
+Do **not** add `DATABASE_URL` — Railway already did.
+
+### Step 5.5 — Give it a web address
+
+1. Still in your app service, open the **Settings** tab.
+2. Under **Networking**, click **Generate Domain**.
+
+**What you should see:** an address like
+`last-place-lager-production.up.railway.app`.
+
+Copy it, go back to **Variables**, and set `PUBLIC_APP_URL` to that address
+with `https://` in front.
+
+### Step 5.6 — Check it came up
+
+Open your new address in a browser.
+
+**What you should see:** the sign-in screen, exactly as on your own computer.
+
+If you see an error page, click the **Deployments** tab and read the newest log.
+The most common causes are a missing secret from step 5.4, or the database not
+finished starting — in which case click **Redeploy**.
+
+### Step 5.7 — Set it up
+
+1. Sign in as `Austin` with `ChangeMe!2026`.
+2. Go to **Admin → History**, upload the spreadsheet, review the preview, and
+   press **APPLY IMPORT**.
+
+   **What you should see:** `260 unique picks found`, `150 duplicates excluded`.
+
+3. Go to **Admin → Setup** and press the big **SET UP** button.
+
+   **What you should see:** the week's games appear.
+
+4. **Change your password**, and tell everyone else to change theirs.
+
+### Step 5.8 — Get it onto everyone's phone
 
 Send the group the link with these instructions:
 
@@ -434,7 +507,18 @@ Send the group the link with these instructions:
 **What they should see:** a football icon on their home screen that opens
 full-screen with no browser bars, like a real app.
 
----
+### What happens automatically from then on
+
+Once it's running, the app looks after itself:
+
+| Job | How often |
+|---|---|
+| Sports Bet Montana board reader | once an hour |
+| Live scores and player statistics | every 2 minutes, but only while games are on |
+| Locked-pick alerts (odds moves, market gone) | every 10 minutes |
+| Preparing next week and pulling its games | every 6 hours |
+
+You can watch all of it, and nudge any of it, from **Admin → Setup**.
 
 ## Part 6 — If something breaks
 
@@ -449,6 +533,8 @@ full-screen with no browser bars, like a real app.
 | Ticket upload says "That file is not a photo" | The file isn't a real image, whatever its name says | Upload a JPEG, PNG, WebP, GIF or HEIC photo |
 | Home says "No NFL week has been set up yet" | The week hasn't been created | Admin → Setup → press the big button |
 | Setup says the schedule couldn't be retrieved | ESPN is unreachable or has changed | Run `npm run check:espn`; meanwhile add games by hand |
+| Deployed app won't start | A secret from step 5.4 is missing | Check the Deployments log; it names the missing one |
+| Ticket photos vanished after a redeploy | No volume, or `UPLOAD_DIR` not set | Do step 5.3 and 5.4 |
 | Reader says PAUSED FOR SAFETY | Sports Bet Montana asked for less traffic | Leave it alone. It resumes by itself |
 
 ### Checking everything still works

@@ -182,6 +182,31 @@ scripts run with.
 
 ---
 
+## Deployment shape
+
+One process serves everything. The API registers its `/api` routes first, then
+`@fastify/static` over the built web client, with a single-page-app fallback so
+a refresh on `/picks` or `/admin` returns the shell rather than a 404 — while an
+unmatched `/api/*` path still returns a JSON 404 rather than HTML.
+
+`npm start` runs `prisma migrate deploy` before booting, so a deployment brings
+its own schema with it. The initial migration carries the reservation unique
+index, which is the constraint the whole matchup rule rests on.
+
+Two production guards:
+
+- The server **refuses to boot** if the JWT secrets are still at their
+  development defaults. It would rather not run than run insecurely.
+- It warns at boot if `UPLOAD_DIR` is unset in production, because most hosts
+  erase the filesystem on redeploy and ticket images are the group's
+  authoritative record of what was wagered.
+
+The web-client path is resolved relative to the server module rather than the
+working directory, so it does not matter which directory a host starts the
+process from.
+
+---
+
 ## Market identity
 
 `selectionKeyOf()` builds an identity from event + category + market + subject +

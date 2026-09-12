@@ -83,6 +83,23 @@ acceptance checklist, written out in order — ten members racing for one game,
 the reader refusing to be rushed, ticket odds changing, the official freeze, and
 the historical import landing on exactly 260 picks.
 
+## Deploying
+
+One service, not two: the API serves the built web client, and applies its own
+database migrations on start.
+
+```bash
+npm ci && npm run build
+npm start                    # runs migrate deploy, then serves on API_PORT
+```
+
+`railway.json`, `nixpacks.toml` and a `Dockerfile` are all present.
+`docs/SETUP.md` Part 5 is the click-by-click Railway walkthrough.
+
+Two things that matter in production: set `JWT_ACCESS_SECRET` and
+`JWT_REFRESH_SECRET` (the app refuses to start without them), and point
+`UPLOAD_DIR` at a persistent volume so ticket photos survive a redeploy.
+
 ## Layout
 
 ```

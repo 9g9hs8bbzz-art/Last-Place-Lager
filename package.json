@@ -12,13 +12,15 @@
     "node": ">=20"
   },
   "scripts": {
-    "build": "npm run build -w @fcp/shared && npm run build -w @fcp/api && npm run build -w @fcp/web",
+    "build": "npm run build -w @fcp/shared && npm run db:generate -w @fcp/api && npm run build -w @fcp/api && npm run build -w @fcp/web",
     "test": "npm run test -w @fcp/shared && npm run test -w @fcp/api",
     "dev:api": "npm run dev -w @fcp/api",
     "dev:web": "npm run dev -w @fcp/web",
     "db:push": "npm run db:push -w @fcp/api",
     "db:seed": "npm run db:seed -w @fcp/api",
     "import:history": "npm run import:history -w @fcp/api",
-    "check:espn": "npm run check:espn -w @fcp/api"
+    "check:espn": "npm run check:espn -w @fcp/api",
+    "start": "npm run start -w @fcp/api",
+    "db:migrate": "npm run db:migrate -w @fcp/api"
   }
 }
