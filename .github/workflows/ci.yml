@@ -1,0 +1,109 @@
+name: CI
+
+# Runs the whole test suite on every push and pull request. The integration
+# tests talk to a real PostgreSQL database rather than mocks, because the rule
+# that matters most — two members can never reserve the same NFL game — is
+# enforced by a unique constraint in Postgres itself. Mocking it away would
+# test nothing.
+
+on:
+  # Pull requests cover work in progress; the push trigger is limited to main
+  # so a branch with an open PR is not checked twice for the same commit.
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# A newer push supersedes an in-flight run on the same branch.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Typecheck, build and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: fcp
+          POSTGRES_PASSWORD: fcp
+          POSTGRES_DB: fcp_test
+        ports:
+          - 5432:5432
+        # Don't start the job until the database is actually accepting
+        # connections, or the first test fails on a cold server.
+        options: >-
+          --health-cmd "pg_isready -U fcp -d fcp_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      DATABASE_URL: postgresql://fcp:fcp@localhost:5432/fcp_test?schema=public
+      TEST_DATABASE_URL: postgresql://fcp:fcp@localhost:5432/fcp_test?schema=public
+      # The test setup file supplies its own signing secrets; these exist so
+      # nothing falls back to a production guard.
+      NODE_ENV: test
+
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build the shared package
+        # The API and web app import @fcp/shared from its compiled output, so
+        # this has to happen before anything that typechecks or runs them.
+        run: npm run build -w @fcp/shared
+
+      - name: Generate the database client
+        run: npm run db:generate -w @fcp/api
+
+      - name: Create the database tables
+        run: npm run db:push -w @fcp/api
+
+      - name: Seed reference data
+        # Seeds the 32 NFL teams, which the test fixtures look up by
+        # abbreviation and which resetDatabase deliberately preserves.
+        run: npm run db:seed -w @fcp/api
+
+      - name: Typecheck shared
+        run: npx tsc --noEmit -p packages/shared/tsconfig.json
+
+      - name: Typecheck API
+        run: npx tsc --noEmit -p apps/api/tsconfig.json
+
+      - name: Typecheck web
+        run: npm run build -w @fcp/web
+
+      - name: Run domain tests
+        run: npm run test -w @fcp/shared
+
+      - name: Run integration and acceptance tests
+        run: npm run test -w @fcp/api
+
+      - name: Verify the historical import still lands on 260 picks
+        # The import is the one place where a subtle regression would quietly
+        # corrupt the group's record, so CI checks the real workbook end to end
+        # rather than trusting the unit tests alone. This is a preview run and
+        # writes nothing.
+        # `shell: bash` turns on pipefail, so a crash in the import is not
+        # hidden by the pipe into tee.
+        shell: bash
+        run: |
+          npm run import:history -w @fcp/api -- ../../data/Last_Place_Lagers_First_Class_Parlays.xlsx | tee import.log
+          grep -q "MATCHED ✓" import.log

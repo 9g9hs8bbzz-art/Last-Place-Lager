@@ -347,6 +347,8 @@ immediately releases the game to everyone else.
 2. **Place the actual wager yourself** at Sports Bet Montana. The app never
    does this and never can.
 3. **Admin → Ticket → upload the photo** of the ticket.
+   The photo appears on screen so you can check each leg against it.
+
 4. **Press VERIFY AGAINST LOCKED PICKS.** The app compares every leg:
    - *Same wager, different price* → accepted automatically. Prices move; this
      is normal. Both prices are kept forever.
@@ -411,6 +413,7 @@ full-screen with no browser bars, like a real app.
 | `Port 8080 is already in use` | The app is already running | Find the other terminal window and press `Ctrl + C` |
 | Sign-in says name and password don't match | Wrong name or password | Names are as listed in the roster; the starting password is `ChangeMe!2026` |
 | A screen says DATA CURRENTLY UNAVAILABLE | That source isn't connected | See Part 2 — this is correct behaviour, not a bug |
+| Ticket upload says "That file is not a photo" | The file isn't a real image, whatever its name says | Upload a JPEG, PNG, WebP, GIF or HEIC photo |
 | Reader says PAUSED FOR SAFETY | Sports Bet Montana asked for less traffic | Leave it alone. It resumes by itself |
 
 ### Checking everything still works
@@ -419,7 +422,7 @@ full-screen with no browser bars, like a real app.
 npm test
 ```
 
-**What you should see:** `Tests  174 passed`. This runs every rule in the app,
+**What you should see:** `Tests  206 passed`. This runs every rule in the app,
 including the ten-people-lock-the-same-game test and the check that the
 historical import still produces exactly 260 picks.
 

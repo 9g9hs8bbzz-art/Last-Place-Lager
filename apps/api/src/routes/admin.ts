@@ -14,6 +14,7 @@ import { manuallyGradeLeg, gradeOfficialLeg, refreshLive } from '../services/liv
 import { buildPreview, applyImport, recordCorrection } from '../services/historicalImport.js';
 import { runScan, linkEventsToGames } from '../services/readerRun.js';
 import { boardReader, ticketOcrProvider, liveScoreProvider, integrationStatus } from '../providers/registry.js';
+import { sniffImageType, ticketImageFilename } from '../lib/imageFiles.js';
 import { selectionKeyOf, normalizeKey, parseAmerican, type MarketCategory } from '@fcp/shared';
 
 export async function adminRoutes(app: FastifyInstance) {
@@ -268,15 +269,29 @@ export async function adminRoutes(app: FastifyInstance) {
     const file = typeof parts === 'function' ? await parts.call(req) : undefined;
     if (!file) return reply.code(400).send({ error: 'NO_FILE', message: 'Attach a photo or screenshot of the ticket.' });
 
+    // The browser's declared type is not evidence. Decide what this file
+    // actually is from its own leading bytes, and refuse anything that is not
+    // a photo — notably SVG and PDF, which can carry script and would become
+    // stored cross-site scripting when served back.
+    const bytes = await file.toBuffer();
+    const contentType = sniffImageType(bytes);
+    if (!contentType) {
+      return reply.code(400).send({
+        error: 'NOT_AN_IMAGE',
+        message: 'That file is not a photo. Upload a JPEG, PNG, WebP, GIF or HEIC image of the ticket.',
+      });
+    }
+
     await fs.mkdir(env.uploadDir, { recursive: true });
-    const safeName = `ticket-${Date.now()}-${file.filename.replace(/[^\w.-]/g, '_')}`;
-    const dest = path.join(env.uploadDir, safeName);
-    await fs.writeFile(dest, await file.toBuffer());
+    // The stored name is built from the week id, the clock and the sniffed
+    // type. Nothing the uploader chose reaches the filesystem.
+    const dest = path.join(env.uploadDir, ticketImageFilename((req.params as { weekId: string }).weekId, contentType));
+    await fs.writeFile(dest, bytes);
 
     try {
       const ticket = await uploadTicket({
         nflWeekId: (req.params as { weekId: string }).weekId,
-        imagePath: dest, mimeType: file.mimetype, uploadedById: req.user!.sub,
+        imagePath: dest, mimeType: contentType, uploadedById: req.user!.sub,
       });
       const extraction = await extractTicket(ticket.id, ticketOcrProvider);
       return { ticket, extraction };
