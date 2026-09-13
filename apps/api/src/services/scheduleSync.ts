@@ -8,7 +8,8 @@
  */
 import { prisma } from '../lib/prisma.js';
 import { audit } from '../lib/audit.js';
-import { isDataUnavailable } from '@fcp/shared';
+import { isDataUnavailable, weekdayIn } from '@fcp/shared';
+import { env } from '../lib/env.js';
 import type { ScheduleProvider } from '../providers/types.js';
 import { linkEventsToGames } from './readerRun.js';
 
@@ -67,7 +68,7 @@ export async function syncWeekSchedule(
       continue;
     }
 
-    const isEligible = eligibleDays.includes(game.kickoffAt.getUTCDay());
+    const isEligible = eligibleDays.includes(weekdayIn(game.kickoffAt, env.groupTimeZone));
     if (isEligible) eligible += 1;
     else notEligible += 1;
 

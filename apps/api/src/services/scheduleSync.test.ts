@@ -19,10 +19,19 @@ function fakeSchedule(games: ScheduleGame[] | null, reason = 'ESPN unreachable')
   };
 }
 
-/** 2026-09-13 is a Sunday; 09-14 a Monday; 09-10 a Thursday. */
+/**
+ * Real 2026 week 1 kickoff times, as ESPN reports them, in UTC. The weekday a
+ * game belongs to is the weekday in Montana, which for a night game is the day
+ * before the one UTC reports — see packages/shared/src/time.ts.
+ */
+/** Sunday 11:00 AM Mountain. */
 const SUNDAY = new Date('2026-09-13T17:00:00Z');
-const MONDAY = new Date('2026-09-14T00:15:00Z');
-const THURSDAY = new Date('2026-09-10T00:15:00Z');
+/** Sunday Night Football: 6:20 PM Mountain on Sunday, already Monday in UTC. */
+const SUNDAY_NIGHT = new Date('2026-09-14T00:20:00Z');
+/** Monday Night Football: 6:15 PM Mountain on Monday, already Tuesday in UTC. */
+const MONDAY_NIGHT = new Date('2026-09-15T00:15:00Z');
+/** Thursday 6:20 PM Mountain, already Friday in UTC. Never eligible. */
+const THURSDAY = new Date('2026-09-11T00:20:00Z');
 
 const game = (id: string, away: string, home: string, kickoffAt: Date, over: Partial<ScheduleGame> = {}): ScheduleGame => ({
   providerGameId: id,
@@ -48,7 +57,7 @@ describe('pulling a week\'s games', () => {
       week.id,
       fakeSchedule([
         game('e1', 'BUF', 'MIA', SUNDAY),
-        game('e2', 'KC', 'DEN', MONDAY),
+        game('e2', 'KC', 'DEN', MONDAY_NIGHT),
         game('e3', 'TB', 'NO', THURSDAY),
       ]),
     );
@@ -61,6 +70,35 @@ describe('pulling a week\'s games', () => {
     const thursday = await prisma.nFLGame.findFirstOrThrow({ where: { providerGameId: 'e3' } });
     expect(thursday.eligible).toBe(false);
     expect(thursday.eligibilityNote).toContain('NOT ELIGIBLE');
+  });
+
+  it('keeps Monday Night Football on the board (spec §6)', async () => {
+    // The kickoff is Tuesday in UTC. Reading the weekday from UTC removed one
+    // pickable matchup from every single week, which with one matchup per member
+    // is a real loss rather than a cosmetic one.
+    const week = await makeWeek();
+    const result = await syncWeekSchedule(week.id, fakeSchedule([game('mnf', 'DEN', 'KC', MONDAY_NIGHT)]));
+
+    expect(result.eligible).toBe(1);
+    expect(result.notEligible).toBe(0);
+    const mnf = await prisma.nFLGame.findFirstOrThrow({ where: { providerGameId: 'mnf' } });
+    expect(mnf.eligible).toBe(true);
+    expect(mnf.eligibilityNote).toBeNull();
+  });
+
+  it('keeps Sunday Night Football eligible, and for the right reason', async () => {
+    const week = await makeWeek();
+    const result = await syncWeekSchedule(week.id, fakeSchedule([game('snf', 'DAL', 'NYG', SUNDAY_NIGHT)]));
+    expect(result.eligible).toBe(1);
+    const snf = await prisma.nFLGame.findFirstOrThrow({ where: { providerGameId: 'snf' } });
+    expect(snf.eligible).toBe(true);
+  });
+
+  it('still refuses a Thursday night game', async () => {
+    const week = await makeWeek();
+    const result = await syncWeekSchedule(week.id, fakeSchedule([game('tnf', 'SF', 'LAR', THURSDAY)]));
+    expect(result.eligible).toBe(0);
+    expect(result.notEligible).toBe(1);
   });
 
   it('is safe to run twice — it updates rather than duplicating', async () => {

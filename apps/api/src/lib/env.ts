@@ -2,6 +2,7 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { config as loadEnvFile } from 'dotenv';
+import { DEFAULT_TIME_ZONE } from '@fcp/shared';
 
 /**
  * Load apps/api/.env before anything below reads process.env.
@@ -46,6 +47,12 @@ export const env = {
   databaseUrl: str('DATABASE_URL'),
   port: num('API_PORT', 8080),
   publicAppUrl: str('PUBLIC_APP_URL', 'http://localhost:5173'),
+  /**
+   * The group's home timezone, used to decide which weekday a kickoff falls on
+   * (spec §6). Montana is Mountain Time. Read from UTC instead, a Monday night
+   * kickoff counts as Tuesday and drops off the board.
+   */
+  groupTimeZone: str('GROUP_TIMEZONE', DEFAULT_TIME_ZONE),
 
   jwtAccessSecret: str('JWT_ACCESS_SECRET', 'dev-access-secret-change-me'),
   jwtRefreshSecret: str('JWT_REFRESH_SECRET', 'dev-refresh-secret-change-me'),

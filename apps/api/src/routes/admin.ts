@@ -17,7 +17,7 @@ import { boardReader, ticketOcrProvider, liveScoreProvider, scheduleProvider, in
 import { ensureWeekAndSync, syncWeekSchedule, currentNflWeek } from '../services/scheduleSync.js';
 import { schedulerStatus, runReaderJob, runLiveJob, runPicksJob } from '../services/scheduler.js';
 import { sniffImageType, ticketImageFilename } from '../lib/imageFiles.js';
-import { selectionKeyOf, normalizeKey, parseAmerican, type MarketCategory } from '@fcp/shared';
+import { selectionKeyOf, normalizeKey, parseAmerican, weekdayIn, type MarketCategory } from '@fcp/shared';
 
 export async function adminRoutes(app: FastifyInstance) {
   app.addHook('preHandler', requireAdmin);
@@ -187,6 +187,7 @@ export async function adminRoutes(app: FastifyInstance) {
 
     const kickoff = new Date(body.data.kickoffAt);
     const eligibleDays = (await prisma.nFLWeek.findUniqueOrThrow({ where: { id: body.data.nflWeekId } })).eligibleWeekdays;
+    const kickoffIsEligible = eligibleDays.includes(weekdayIn(kickoff, env.groupTimeZone));
 
     const game = await prisma.nFLGame.create({
       data: {
@@ -194,9 +195,11 @@ export async function adminRoutes(app: FastifyInstance) {
         providerGameId: body.data.providerGameId ?? `${away.abbreviation}-${home.abbreviation}-${kickoff.toISOString().slice(0, 10)}`,
         awayTeamId: away.id, homeTeamId: home.id, kickoffAt: kickoff,
         venue: body.data.venue, indoor: body.data.indoor,
-        // Sunday and Monday by default; anything else is visible but not selectable.
-        eligible: eligibleDays.includes(kickoff.getUTCDay()),
-        eligibilityNote: eligibleDays.includes(kickoff.getUTCDay()) ? null : 'NOT ELIGIBLE FOR THIS WEEK\'S PARLAY',
+        // Sunday and Monday by default, read in the group's own timezone so a
+        // Monday night kickoff does not count as Tuesday; anything else is
+        // visible but not selectable.
+        eligible: kickoffIsEligible,
+        eligibilityNote: kickoffIsEligible ? null : 'NOT ELIGIBLE FOR THIS WEEK\'S PARLAY',
       },
     });
     await linkEventsToGames(body.data.nflWeekId);

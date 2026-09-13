@@ -10,7 +10,8 @@
  */
 import { EspnProvider } from '../providers/espn.js';
 import { currentNflWeek } from '../services/scheduleSync.js';
-import { isDataUnavailable } from '@fcp/shared';
+import { isDataUnavailable, weekdayLabelIn } from '@fcp/shared';
+import { env } from '../lib/env.js';
 
 async function main() {
   const args = process.argv.slice(2).filter((a) => !a.startsWith('--'));
@@ -32,7 +33,9 @@ async function main() {
 
   console.log(`SCHEDULE:  OK — ${schedule.data.length} games\n`);
   for (const g of schedule.data) {
-    const day = g.kickoffAt.toUTCString().slice(0, 3);
+    // The group's weekday, not UTC's: a Monday night kickoff is Tuesday in UTC
+    // and printing that would misrepresent which games are eligible.
+    const day = weekdayLabelIn(g.kickoffAt, env.groupTimeZone);
     console.log(
       `  ${g.awayTeamAbbrev.padEnd(3)} @ ${g.homeTeamAbbrev.padEnd(3)}  ${day} ${g.kickoffAt.toISOString().slice(0, 16)}  ` +
         `${g.indoor ? 'indoor ' : '       '}${g.venue ?? ''}`,
