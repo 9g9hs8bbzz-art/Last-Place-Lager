@@ -58,6 +58,22 @@ restart your computer and try step 5 again.
 3. **Important:** during the install it asks you to choose a password for the
    `postgres` user. Write this password down somewhere safe — you need it in a
    moment. Accept every other default, including port `5432`.
+
+   > **If it says "Port 5432 is already in use":** you almost certainly have
+   > PostgreSQL on this computer already, and you do not need a second copy.
+   > Cancel the installer and go straight to Step 1.3. If `createdb fcp` works,
+   > the one you already have is fine and this step is done.
+   >
+   > If you'd rather install a fresh copy anyway, set the port in the installer
+   > to **5433** and carry on. Nothing in the app is tied to 5432 — you just
+   > have to say so in two places:
+   >
+   > - Step 1.3: type `createdb -p 5433 fcp` instead of `createdb fcp`
+   > - Step 1.5: write `localhost:5433` instead of `localhost:5432`
+   >
+   > Anything else that connects to the database — `psql`, the commands in
+   > Step 1.6 — needs the same `-p 5433`, or it will quietly talk to the *other*
+   > PostgreSQL and you'll wonder where your tables went.
 4. When it finishes, open your terminal and type:
    ```
    psql --version
@@ -526,6 +542,7 @@ You can watch all of it, and nudge any of it, from **Admin → Setup**.
 |---|---|---|
 | `command not found` | Your computer can't find a program | Close the terminal, open a new one, try again |
 | `ECONNREFUSED ... 5432` | The database isn't running | Start Postgres.app, or restart your computer |
+| `Port 5432 is already in use` | PostgreSQL is already running here | You probably don't need a second one — try Step 1.3. To install one anyway, see the note in Step 1.2 |
 | `Environment variable not found: DATABASE_URL` | The settings file is missing or misnamed | Check that `apps/api/.env` exists (note the dot) |
 | `Port 8080 is already in use` | The app is already running | Find the other terminal window and press `Ctrl + C` |
 | Sign-in says name and password don't match | Wrong name or password | Names are as listed in the roster; the starting password is `ChangeMe!2026` |
