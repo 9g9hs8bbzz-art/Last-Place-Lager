@@ -1,4 +1,28 @@
 /** Configuration, read once at startup. Nothing here is ever sent to the browser. */
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { config as loadEnvFile } from 'dotenv';
+
+/**
+ * Load apps/api/.env before anything below reads process.env.
+ *
+ * The path is resolved relative to this module rather than to the working
+ * directory, because npm runs workspace scripts from the workspace folder while
+ * a person runs them from the repository root, and a deployment host may start
+ * the process from somewhere else again. From src/lib or dist/lib, two levels up
+ * is apps/api either way.
+ *
+ * Real environment variables always win: dotenv does not overwrite a value the
+ * host has already set, so a deployment's configuration is never shadowed by a
+ * stray .env that shipped in the image.
+ */
+loadEnvFile({
+  path: path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '.env'),
+  // Without this dotenv prints a promotional banner on every command the group
+  // runs, which buries the output the setup guide tells them to read.
+  quiet: true,
+});
+
 
 function str(key: string, fallback = ''): string {
   return process.env[key]?.trim() || fallback;

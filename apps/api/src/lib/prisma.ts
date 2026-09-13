@@ -1,3 +1,6 @@
+// Loads apps/api/.env before the client reads DATABASE_URL, whatever order the
+// rest of the module graph happens to import things in.
+import './env.js';
 import { PrismaClient } from '@prisma/client';
 
 export const prisma = new PrismaClient({

@@ -15,11 +15,15 @@ async function main() {
   const filePath = args.find((a) => !a.startsWith('--'));
 
   if (!filePath) {
-    console.error('Please give the path to the workbook, for example:\n  npm run import:history -- data/history.xlsx');
+    console.error('Please give the path to the workbook, for example:\n  npm run import:history -- data/Last_Place_Lagers_First_Class_Parlays.xlsx');
     process.exit(1);
   }
 
-  const resolved = path.resolve(filePath);
+  // npm runs a workspace script with the workspace as the working directory,
+  // so a path typed at the repository root would otherwise resolve against
+  // apps/api and not be found. INIT_CWD is the directory npm was invoked from,
+  // which is what the person typing the command actually meant.
+  const resolved = path.resolve(process.env.INIT_CWD || process.cwd(), filePath);
   const preview = await buildPreview(resolved, path.basename(resolved));
 
   console.log('\n=================== IMPORT PREVIEW ===================');
