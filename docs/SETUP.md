@@ -100,9 +100,33 @@ createdb fcp
 success. If it says `database "fcp" already exists`, that's fine too — it's
 already there.
 
-If it says `command not found: createdb`, your computer can't find PostgreSQL
-yet. On Mac with Postgres.app, open the app, click the settings gear, choose
-**Configure PATH**, then close and reopen your terminal.
+If it says `command not found: createdb`, PostgreSQL is installed but your
+computer doesn't know where to find it. This does **not** mean the database is
+missing — it is usually running perfectly well. Find which one you have:
+
+```
+ls -d /Applications/Postgres.app 2>/dev/null
+ls /Library/PostgreSQL/*/bin/createdb 2>/dev/null
+```
+
+- **If it printed `/Applications/Postgres.app`:** open the app, click the
+  settings gear, choose **Configure PATH**.
+- **If it printed a path like `/Library/PostgreSQL/17/bin/createdb`:** run the
+  two lines below, changing `17` to the version number you saw. The first asks
+  for your Mac login password, not your PostgreSQL one.
+
+  ```
+  sudo mkdir -p /etc/paths.d
+  echo /Library/PostgreSQL/17/bin | sudo tee /etc/paths.d/postgresql
+  ```
+
+Either way, **close your terminal and open a new window** afterwards — this kind
+of change only reaches new windows — then check with `createdb --version`.
+
+> You can also skip this step entirely if you want to. `npm run db:push` in Step
+> 1.6 creates the `fcp` database by itself. Having `createdb` and `psql`
+> available is worth the two minutes, though, because every later instruction in
+> this guide that inspects the database uses them.
 
 ### Step 1.4 — Download the app and install its parts
 
