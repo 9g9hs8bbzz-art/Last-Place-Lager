@@ -93,12 +93,30 @@ to use.
 In your terminal, type this one line and press Enter:
 
 ```
-createdb fcp
+createdb -U postgres fcp
 ```
+
+It asks for the PostgreSQL password you chose in Step 1.2. Nothing appears as
+you type — that is normal, not a frozen terminal.
 
 **What you should see:** nothing at all. In the terminal, silence means
 success. If it says `database "fcp" already exists`, that's fine too — it's
 already there.
+
+> **Why `-U postgres`?** Without it, the command tries to sign in under your
+> Mac username, and the postgresql.org installer never creates a PostgreSQL
+> account by that name. You get a password prompt that refuses every password
+> you type, including the right one, because the account it is asking about
+> does not exist. (Postgres.app does create an account matching your username,
+> so with Postgres.app a plain `createdb fcp` works too.)
+
+Check it worked:
+
+```
+psql -U postgres -l
+```
+
+`fcp` should appear in the list. Press `q` to get back to the prompt.
 
 If it says `command not found: createdb`, PostgreSQL is installed but your
 computer doesn't know where to find it. This does **not** mean the database is
