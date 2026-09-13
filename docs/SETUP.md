@@ -208,7 +208,25 @@ npm run db:push
 
 **What you should see:** `Your database is now in sync with your Prisma schema.`
 
-### Step 1.7 — Add the roster and the NFL teams
+### Step 1.7 — Compile the shared code
+
+**What you're doing:** the API and the web client share one package of common
+code — the odds arithmetic, the roster, the historical rules. It is written in
+TypeScript and has to be compiled once before anything can import it.
+
+```
+npm run build -w @fcp/shared
+```
+
+**What you should see:** nothing at all, after a few seconds. Silence is
+success.
+
+> Skip this and the next step fails with `Cannot find module
+> '.../@fcp/shared/dist/index.js'`. That message means exactly this: the shared
+> package has not been compiled yet. It is not a broken install, and running
+> `npm install` again will not fix it — run the line above instead.
+
+### Step 1.8 — Add the roster and the NFL teams
 
 **What you're doing:** creating the ten member accounts and the 32 NFL teams.
 
@@ -231,7 +249,7 @@ Everyone's starting password is `ChangeMe!2026`. **Austin is the
 administrator.** Everyone should change their password after their first sign
 in.
 
-### Step 1.8 — Load the group's history
+### Step 1.9 — Load the group's history
 
 **What you're doing:** moving the spreadsheet's 260 picks into the database.
 
@@ -266,7 +284,7 @@ npm run import:history -- data/Last_Place_Lagers_First_Class_Parlays.xlsx --appl
 
 **What you should see:** `Imported. 260 picks written.`
 
-### Step 1.9 — Check that the NFL data source works
+### Step 1.10 — Check that the NFL data source works
 
 **What you're doing:** making sure the app can reach ESPN, which is where the
 game schedule and live scores come from. It's free and needs no account.
@@ -282,7 +300,7 @@ If it says the schedule could not be read, the app still works — you'd just ad
 games by hand from the Admin screen — but tell me and I'll look at it. ESPN's
 endpoints are unofficial, so they can change without warning.
 
-### Step 1.10 — Start it up
+### Step 1.11 — Start it up
 
 **What you're doing:** turning both programs on.
 
@@ -303,7 +321,7 @@ npm run dev:web
 
 **What you should see:** a line with `Local: http://localhost:5173/`
 
-### Step 1.11 — Sign in
+### Step 1.12 — Sign in
 
 Open your web browser and go to **http://localhost:5173**
 
@@ -313,7 +331,7 @@ in as `Austin` with password `ChangeMe!2026`.
 You're running First Class Parlays. Tap through the five tabs at the bottom.
 **Stats** already has all 260 historical picks in it.
 
-### Step 1.12 — Set up the week
+### Step 1.13 — Set up the week
 
 **What you're doing:** creating the current NFL week and loading its games.
 Until you do this, nobody can make a pick.
